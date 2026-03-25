@@ -1,7 +1,12 @@
 #![deny(clippy::all, clippy::pedantic)]
-#![allow(clippy::module_name_repetitions)]
-#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::module_name_repetitions, clippy::missing_errors_doc)]
 
 //! # umms-observe
 //!
-//! Tracing, metrics, and observability infrastructure.
+//! Tracing, metrics, and observability infrastructure for UMMS.
+
+pub mod metrics;
+pub mod tracing_setup;
+
+pub use metrics::{encode_metrics, init_metrics, metrics, UmmsMetrics};
+pub use tracing_setup::init_tracing;
