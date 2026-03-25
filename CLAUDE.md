@@ -54,7 +54,7 @@ Agent 切换流程: snapshot(A) → clean(L0/L1) → restore_or_coldstart(B)
 |------|------|------|
 | 主语言 | Rust (tokio, Edition 2024, MSRV 1.80+) | 单进程高性能，内存安全 |
 | 向量数据库 | LanceDB (Rust native) | 嵌入式零部署，100万向量 <500MB 内存 |
-| 知识图谱 | SQLite WAL + petgraph (内存图) | 持久化+热数据，2-3 跳遍历 <1ms |
+| 知识图谱 | CozoDB (Rust native, RocksDB) → 迁移中 | Datalog 查询，内置图算法+HNSW。当前 SQLite 过渡实现。ADR-003 |
 | 缓存 | moka | 进程内并发缓存，TTI/TTL |
 | HTTP 框架 | axum | tokio 原生，tower 中间件 |
 | MCP | rmcp | Rust native MCP SDK |
@@ -151,7 +151,7 @@ cargo build --release                # Release 构建
 ## 开发顺序
 
 ```
-Phase 1 (W1-4):   M1 存储引擎 + M6 可观测性基础
+Phase 1 (W1-4):   M1 存储引擎 + M6 可观测性基础  ← 核心完成 (55 tests)
 Phase 1.5 (W3-5): M7 Persona 引擎 (与 M1 后期并行)
 Phase 2 (W5-8):   M2 编码服务
 Phase 3 (W9-14):  M3 检索与分析
@@ -167,6 +167,7 @@ Phase 6 (W25-28): M6 完善 + 集成测试 + 发布
 3. **巩固服务是共享层的唯一自动写入者** — 只有巩固服务（自动）或 promote API（手动）可以写入共享层。任何绕过的代码都是 bug。
 4. **编码降级必须对调用方透明** — 上层不关心当前用的 Gemini 还是 ONNX。维度适配是编码模块内部的事。
 5. **切换 Agent ≠ 杀死 Agent** — 切换是"挂起+恢复"，不是"销毁+重建"。设计任何 Agent 功能时问：切换后恢复，状态还在吗？
+6. **图谱后端可替换** — 上层模块只依赖 KnowledgeGraphStore trait，图谱实现更换（SQLite→CozoDB→其他）对 M3/M4/M5 零影响。
 
 ## 写代码前的自检
 
