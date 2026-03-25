@@ -1,0 +1,17 @@
+[package]
+name = "umms-integration-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[[test]]
+name = "storage_e2e"
+path = "storage_e2e.rs"
+
+[dependencies]
+umms-core.workspace = true
+umms-storage.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+chrono.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
