@@ -87,30 +87,23 @@ UMMS/
 └── docs/                         # 编码标准、ADR 等
 ```
 
-## 编码约定
+## 工程原则（详见 docs/CODING_STANDARDS.md）
 
-### Rust
-- Edition 2024, MSRV 1.80+
-- `#![deny(clippy::all, clippy::pedantic)]` — 所有 crate
-- `#![allow(clippy::module_name_repetitions)]` — 允许模块名重复
-- 所有 `pub` API 必须有 doc comment
-- 错误类型统一使用 `thiserror` 定义在 `umms-core`
-- async 运行时统一 `tokio`，不混用 `async-std`
-- 使用 `tracing` 进行结构化日志，不用 `println!` 或 `log`
-- 所有可失败操作返回 `Result<T, UmmsError>`，禁止 `unwrap()` 在非测试代码中
-- 命名：snake_case 函数/变量，CamelCase 类型，SCREAMING_SNAKE_CASE 常量
-- 文件不超过 500 行，超过则拆分子模块
+**原则零：第一性原理** — 写代码前先问：需求的本质是什么？最简单的正确解法是什么？如果我错了代价多大？
 
-### Python (python/umms_ml/)
-- Python 3.10+
-- 类型注解 (type hints) 全覆盖
-- 使用 ruff 格式化和 lint
-- 使用 pytest 测试
+**原则一：一次做对** — 不写"先让它跑起来"的代码。写之前先画状态图，接口先于实现，假设你没有第二次修改机会。
 
-### Git
-- 分支策略: main (稳定) + feature/* + fix/* + refactor/*
-- Commit message: Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `perf:`, `chore:`)
-- PR 合入前必须 CI 通过 (clippy + fmt + test)
+**原则二：每个模块只知道它该知道的** — 接口即契约，实现即秘密。检验方法：把 LanceDB 换成 Qdrant，除 umms-storage 外应零修改。三个相似的东西才是抽象的时机（Rule of Three）。
+
+**原则三：让错误的代码无法编译** — Newtype 防止参数混淆（AgentId ≠ SessionId ≠ String），Typestate 强制状态机转换顺序，`#[must_use]` 防止忽略重要返回值。
+
+**原则四：显式优于隐式** — agent_id 是构造参数不是可选字段，副作用体现在函数名中，配置项有类型约束和边界检查。
+
+**原则五：错误处理是第一公民** — 错误类型携带诊断上下文，区分可恢复和不可恢复，永远不吞掉错误。
+
+**原则六：测试行为不测实现** — 测 "Agent B 不能看到 Agent A 的数据" 而不是 "调用了某个 mock 函数 1 次"。每个 bug fix 附带回归测试。
+
+**原则七：代码写给三个月后的自己** — 注释解释 WHY 不解释 WHAT，用领域语言命名（`apply_forgetting_decay` 不是 `process_items`），ADR 记录放弃了什么。
 
 ## 性能目标
 
@@ -167,11 +160,19 @@ Phase 5 (W19-24): M5 接入与交互层
 Phase 6 (W25-28): M6 完善 + 集成测试 + 发布
 ```
 
-## 关键设计决策速查
+## 系统不变量（违反任何一条都是 bug）
 
-- **隔离键**: 所有存储操作必须携带 `agent_id`，查询时必须过滤
-- **共享层写入**: 只有巩固服务可自动写入共享层 (importance > 0.7 + 跨 Agent 引用 ≥ 2 + 存活 > 24h)
-- **编码降级**: Gemini API 超时 3s → 自动切本地 ONNX
-- **GIL 处理**: PyO3 调用必须用 `Python::allow_threads` 释放 GIL
-- **panic 防护**: 各模块入口 `catch_unwind` 隔离
-- **遗忘衰减**: 4 级 (task λ=0.5 / session λ=0.1 / preference λ=0.01 / domain λ=0.001)
+1. **agent_id 是隔离的唯一保证** — 每个接触存储的函数签名中必须有 agent_id。没有 agent_id 的存储操作必须是明确操作共享层的，且函数名体现这一点。
+2. **记忆层级晋升是单向阀门** — L0→L1→L2→L3 不可逆。可以删除，不能降级。
+3. **巩固服务是共享层的唯一自动写入者** — 只有巩固服务（自动）或 promote API（手动）可以写入共享层。任何绕过的代码都是 bug。
+4. **编码降级必须对调用方透明** — 上层不关心当前用的 Gemini 还是 ONNX。维度适配是编码模块内部的事。
+5. **切换 Agent ≠ 杀死 Agent** — 切换是"挂起+恢复"，不是"销毁+重建"。设计任何 Agent 功能时问：切换后恢复，状态还在吗？
+
+## 写代码前的自检
+
+- 如果删掉所有注释，新人仅通过类型签名和函数名能理解它在做什么吗？
+- 如果底层存储换了，存储层之外的代码需要改吗？（不应该）
+- 有没有接受 String 参数而它其实应该是更具体的类型？
+- 输入极端值（空串、空数组、MAX）会发生什么？
+- 有没有隐式顺序依赖？能用类型系统强制吗？
+- 三个月后看到这段代码，30 秒内能理解它为什么存在吗？

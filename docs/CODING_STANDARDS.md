@@ -1,413 +1,388 @@
-# UMMS 编码标准
+# UMMS 工程原则
 
-本文档定义 UMMS 项目的编码规范、架构约束和质量要求。所有贡献代码必须遵循此标准。
+这不是一份风格指南（rustfmt 和 clippy 会管那些事）。这是一份**思维约束**——在写每一行代码之前，用来检验自己有没有在做正确的事。
 
 ---
 
-## 1. Rust 编码规范
+## 原则零：第一性原理
 
-### 1.1 编译器与工具链
+写代码前先问三个问题：
+1. **这个需求的本质是什么？** — 不是"调用方让我加个参数"，而是"他到底想解决什么问题"。
+2. **最简单的正确解法是什么？** — 不是最炫的、最通用的，而是刚好解决问题、不多不少的。
+3. **如果我错了，代价有多大？** — 如果代价高，就多花时间确认；如果代价低，就快速试错。
 
-- **Rust Edition**: 2024
-- **MSRV (最低支持版本)**: 1.80+
-- **Async Runtime**: 统一 `tokio`，禁止混用 `async-std`
-- **格式化**: `rustfmt` (项目根目录 `rustfmt.toml` 配置)
-- **Lint**: `clippy` 严格模式
+**反面案例**：用户说"检索需要支持按时间范围过滤"。表面需求是加个 `created_after` / `created_before` 参数。第一性原理思考：用户真正想做的是"只看最近的相关记忆"。也许更好的方案是在相关性评分中加入时间衰减因子，而不是硬过滤。
 
-每个 crate 的 `lib.rs` 或 `main.rs` 顶部必须包含：
+---
+
+## 原则一：一次做对，拒绝"先实现再优化"
+
+"先让它跑起来"这句话杀死了无数代码库。临时方案一旦上线，就永远不会被替换——因为总有更紧急的事。
+
+**实践**：
+- **写之前先画状态图**。UMMS 的核心复杂度在状态转换：记忆从 L0→L1→L2→L3 的晋升、Agent 切换时的快照→清空→恢复。如果你画不清楚状态图，说明你还没理解要做什么，这时候写出来的代码一定会改。
+- **接口先于实现**。先写 trait 签名和 doc comment，让调用方 review，确认这是他们需要的契约。实现可以慢慢来，但接口一旦发布就很难改。
+- **写代码时假设你不会有第二次机会修改它**。这不是说追求完美，而是说每个函数、每个数据结构，在写的时候就要想清楚它的边界和职责。
+
+**信号（你可能做错了）**：
+- 代码里有 `// TODO: fix later` — 大概率不会 fix。要么现在解决，要么开 issue 跟踪。
+- 写了一个函数超过 50 行 — 它可能在做不止一件事。
+- 测试需要 mock 超过 3 个依赖 — 说明被测代码耦合太紧。
+
+---
+
+## 原则二：每个模块只知道它该知道的
+
+耦合的根源不是 `use` 语句太多，而是**知识泄漏**——一个模块知道了另一个模块的内部细节。
+
+### 2.1 接口即契约，实现即秘密
+
 ```rust
-#![deny(clippy::all, clippy::pedantic)]
-#![allow(clippy::module_name_repetitions)]
-#![allow(clippy::missing_errors_doc)]  // 待项目稳定后移除
+// 错误：检索模块知道了 LanceDB 的过滤语法
+fn search(query: &str, lance_filter: &str) -> Vec<Memory> { ... }
+
+// 正确：检索模块只知道"我需要过滤条件"，不知道底层怎么实现
+fn search(query: &str, filter: MetadataFilter) -> Vec<Memory> { ... }
+// MetadataFilter 是 umms-core 中的领域类型，与任何存储后端无关
 ```
 
-### 1.2 命名规范
+**核心检验方法**：假设明天要把 LanceDB 换成 Qdrant——除了 `umms-storage` 内部，其他所有 crate 的代码应该**零修改**。如果做不到，说明存储细节泄漏了。
 
-| 元素 | 风格 | 示例 |
-|------|------|------|
-| 函数/方法 | snake_case | `fn encode_text()` |
-| 变量/参数 | snake_case | `let agent_id` |
-| 类型/结构体/枚举 | CamelCase | `struct MemoryEntry` |
-| 枚举变体 | CamelCase | `Modality::Text` |
-| 常量 | SCREAMING_SNAKE_CASE | `const MAX_RETRIES: u32` |
-| Trait | CamelCase + 动词/形容词 | `trait Encodable`, `trait MemoryStorage` |
-| Crate | kebab-case | `umms-storage` |
-| 模块 | snake_case | `mod lance_store` |
-| Feature flag | kebab-case | `local-encoder` |
+### 2.2 数据流向决定依赖方向
 
-### 1.3 错误处理
+数据应该从上层流向下层，而不是反过来。如果你发现下层模块需要"回调"上层，说明抽象层次划分有问题。
 
-**统一错误类型**：所有错误定义在 `umms-core` 中，使用 `thiserror` 派生：
+```
+用户请求 → M5(交互层) → M3(检索) → M1(存储)
+                                         ↓
+                                     返回数据
+                                         ↓
+              M5 ← M3 ← M1（数据原路返回）
+```
+
+**禁止**：M1 存储层主动通知 M3 "我的数据变了"。如果需要这种模式，用事件通道 (tokio mpsc) 解耦，而不是直接依赖。
+
+### 2.3 谨慎使用"通用"和"可扩展"
+
+你觉得未来可能需要的灵活性，90% 不会被用到，但它带来的复杂度 100% 会留下。
 
 ```rust
-// umms-core/src/error.rs
-use thiserror::Error;
+// 过度设计：为了"未来可能的多种编码策略"搞了 4 层抽象
+trait EncoderFactory: EncoderFactoryProvider { ... }
+trait EncoderFactoryProvider { ... }
+trait EncoderStrategy { ... }
+trait EncoderStrategyAdapter { ... }
 
-#[derive(Error, Debug)]
-pub enum UmmsError {
-    #[error("Storage error: {0}")]
-    Storage(#[from] StorageError),
-
-    #[error("Encoding error: {0}")]
-    Encoding(#[from] EncodingError),
-
-    #[error("Retrieval error: {0}")]
-    Retrieval(#[from] RetrievalError),
-
-    // ... 各模块子错误
+// 正确：当前只有 Gemini 和 Local 两种，一个 enum match 就够了
+enum EncoderBackend {
+    Gemini(GeminiClient),
+    Local(OnnxEncoder),
 }
+// 等真的需要第三种时，再重构。三个相似的东西才是抽象的时机。
 ```
 
-**规则**：
-- 所有可失败操作返回 `Result<T, UmmsError>` 或模块级子错误
-- **禁止** 在非测试代码中使用 `unwrap()` 或 `expect()`
-- 使用 `?` 操作符传播错误，不手动 match + return Err
-- 外部库错误通过 `#[from]` 或 `map_err` 转换为内部错误类型
-- 测试代码中可使用 `unwrap()` / `expect()` / `#[should_panic]`
+**The Rule of Three**：代码重复两次可以忍，重复三次再抽象。过早抽象比重复更有害。
 
-### 1.4 异步编程
+---
+
+## 原则三：让错误的代码无法编译
+
+Rust 的类型系统是你最强的防线。把业务规则编码到类型中，让违规操作在编译期就被拒绝。
+
+### 3.1 新类型（Newtype）防止参数混淆
 
 ```rust
-// 正确：使用 tokio 原语
-use tokio::sync::{mpsc, RwLock, Mutex};
-use tokio::time::{sleep, timeout};
+// 危险：两个 String 参数，调用时很容易传反
+fn query(agent_id: String, session_id: String) { ... }
 
-// 错误：不要使用 std 同步原语在 async 上下文
-// use std::sync::Mutex; // 会阻塞 tokio 线程
-
-// CPU 密集任务必须使用 spawn_blocking
-let result = tokio::task::spawn_blocking(move || {
-    heavy_computation()
-}).await?;
-
-// PyO3 调用必须释放 GIL
-Python::with_gil(|py| {
-    py.allow_threads(|| {
-        // Rust 代码在这里运行，GIL 已释放
-    })
-});
+// 安全：类型不同，编译器帮你检查
+fn query(agent_id: AgentId, session_id: SessionId) { ... }
+// query(session_id, agent_id)  ← 编译错误！
 ```
 
-**async trait 规则**：
-- 使用 `#[async_trait]` 宏（来自 `async-trait` crate）
-- 所有 async trait 要求 `Send + Sync` bound
+在 UMMS 中，至少以下 ID 必须是独立类型：`AgentId`, `SessionId`, `MemoryId`, `NodeId`, `EdgeId`。
 
-### 1.5 日志与追踪
-
-统一使用 `tracing` crate，不使用 `println!`、`eprintln!` 或 `log` crate：
+### 3.2 用类型状态（Typestate）表达状态机
 
 ```rust
-use tracing::{info, warn, error, debug, trace, instrument};
+// Agent 上下文的生命周期：通过类型系统强制正确的状态转换
+struct AgentContext<S: ContextState> { ... }
+struct Active;      // 当前活跃
+struct Snapshotted; // 已快照，等待清理
+struct Suspended;   // 已挂起
 
-// 函数级追踪（自动记录参数和返回值）
-#[tracing::instrument(skip(self, vector), fields(agent_id = %query.agent_id))]
-async fn search(&self, query: &MemoryQuery, vector: &[f32]) -> Result<Vec<MemoryEntry>> {
-    debug!(top_k = query.top_k, "Starting memory search");
-
-    // 业务逻辑...
-
-    info!(result_count = results.len(), "Search completed");
-    Ok(results)
+impl AgentContext<Active> {
+    fn snapshot(self) -> AgentContext<Snapshotted> { ... }
+    // 注意：self 被 move，Active 状态被消费，不可能再用
 }
+impl AgentContext<Snapshotted> {
+    fn clean(self) -> AgentContext<Suspended> { ... }
+}
+// 编译器保证：不可能在未 snapshot 的情况下 clean
+// 编译器保证：不可能对已 snapshot 的 context 再次 snapshot
 ```
 
-**日志级别指南**：
-| 级别 | 用途 | 示例 |
-|------|------|------|
-| `error!` | 需要关注的错误 | 存储连接失败、API 调用异常 |
-| `warn!` | 非致命但异常 | fallback 到本地模型、缓存未命中率高 |
-| `info!` | 重要业务事件 | Agent 切换、巩固完成、服务启动 |
-| `debug!` | 开发调试信息 | 查询参数、中间结果 |
-| `trace!` | 详细执行追踪 | 每次缓存访问、每条记忆评分 |
-
-### 1.6 文件组织
-
-- **单文件不超过 500 行**：超过则拆分为子模块
-- **每个 crate 的 `lib.rs`**：只做 re-export 和模块声明，不放业务逻辑
-- **模块文件结构**：
-
-```
-crate-name/src/
-├── lib.rs          # pub mod 声明 + re-export
-├── traits.rs       # 公共 trait 定义
-├── types.rs        # 公共类型定义
-├── feature_a/
-│   ├── mod.rs      # 子模块入口
-│   ├── impl_x.rs   # 具体实现
-│   └── impl_y.rs
-└── feature_b/
-    └── ...
-```
-
-### 1.7 文档注释
+### 3.3 用 `#[must_use]` 防止忽略重要返回值
 
 ```rust
-/// 所有 pub 项必须有 doc comment
-///
-/// 包含：
-/// - 功能描述（一句话总结）
-/// - 参数说明（如果不显而易见）
-/// - 返回值说明
-/// - 错误条件
-/// - 使用示例（复杂 API 必须有）
-///
-/// # Examples
-///
-/// ```rust
-/// let store = MemoryStore::new(config).await?;
-/// let id = store.write(entry).await?;
-/// ```
-///
-/// # Errors
-///
-/// Returns `StorageError::ConnectionFailed` if the database is unreachable.
-pub async fn write(&self, entry: MemoryEntry) -> Result<MemoryId> {
-    // ...
-}
+#[must_use = "snapshot must be persisted, dropping it loses agent state"]
+pub struct Snapshot { ... }
 
-// 内部函数可以省略 doc comment，但复杂逻辑需要行内注释
-fn calculate_decay_score(importance: f32, lambda: f32, hours: f32) -> f32 {
-    // Exponential decay: score = importance * e^(-λ * t)
-    importance * (-lambda * hours).exp()
-}
+// 如果调用方忽略了 snapshot 返回值，编译器会警告
 ```
 
 ---
 
-## 2. 架构约束
+## 原则四：显式优于隐式
 
-### 2.1 模块依赖规则
+隐式行为是 bug 的温床。当代码"自动"做了某件事，维护者很难追踪"为什么会这样"。
 
-严格遵循依赖拓扑，**禁止循环依赖**：
-
-```
-umms-core         → 无依赖（纯类型定义）
-umms-storage      → umms-core
-umms-persona      → umms-core, umms-storage
-umms-encoder      → umms-core, umms-storage
-umms-retriever    → umms-core, umms-storage, umms-encoder
-umms-analyzer     → umms-core
-umms-consolidation→ umms-core, umms-storage, umms-encoder, umms-retriever
-umms-api          → 所有 crate
-umms-observe      → umms-core (trait 层)
-umms-python       → umms-core, umms-encoder
-```
-
-**规则**：
-- 下层模块不可依赖上层模块
-- 模块间通过 trait（定义在 `umms-core`）解耦
-- 具体实现通过泛型或 `dyn Trait` 注入
-
-### 2.2 Agent 隔离不变量
-
-以下不变量在任何代码路径中都必须成立：
-
-1. **所有存储写入必须携带 `agent_id`**
-2. **所有存储查询必须过滤 `agent_id`**（除非显式设置 `include_shared = true`）
-3. **Agent A 的私有数据永远不可被 Agent B 直接访问**
-4. **共享层写入只允许通过巩固服务（自动）或显式 promote API（手动）**
-5. **Agent 切换时必须执行 snapshot → clean → restore 三步骤**
-
-### 2.3 Panic 防护
-
-每个模块的顶层入口点必须 `catch_unwind`：
+### 4.1 不要用默认值掩盖必须的决策
 
 ```rust
-// 正确：模块入口有 panic 防护
-pub async fn handle_request(req: Request) -> Response {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        // 实际处理逻辑
-    })) {
-        Ok(result) => result,
-        Err(_) => {
-            error!("Panic caught in request handler");
-            Response::internal_error()
-        }
-    }
+// 危险：agent_id 有默认值，调用方可能忘记设置
+pub struct MemoryQuery {
+    pub agent_id: String,  // 默认 ""
+    ...
+}
+
+// 安全：builder 模式强制必填字段
+impl MemoryQuery {
+    pub fn new(agent_id: AgentId) -> Self { ... }
+    // agent_id 是构造参数，不提供就无法创建 Query
 }
 ```
 
-### 2.4 配置管理
+在 UMMS 中，`agent_id` 是**隔离的命脉**。任何可以不带 `agent_id` 就执行的存储操作都是安全漏洞。
 
-- 所有可配置参数通过 `configs/default.toml` 管理
-- 支持环境变量覆盖：`UMMS_SERVER_PORT=8720`（前缀 `UMMS_`，`_` 分隔层级）
-- 配置优先级：命令行参数 > 环境变量 > 配置文件 > 硬编码默认值
-- **禁止**在代码中硬编码魔法数字，必须定义为常量或配置项
-
----
-
-## 3. 测试规范
-
-### 3.1 测试组织
-
-```
-crates/umms-xxx/
-├── src/
-│   └── feature.rs          # 底部可放 #[cfg(test)] mod tests
-└── tests/
-    └── integration_test.rs  # 集成测试
-
-tests/                       # 项目级集成测试
-├── fixtures/                # 测试数据
-│   ├── memory_entries.json
-│   └── agent_configs/
-└── integration/
-    └── e2e_test.rs
-```
-
-### 3.2 测试命名
+### 4.2 副作用必须在函数名中体现
 
 ```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
+// 不清楚：这个函数只是读取，还是会修改什么？
+fn process_memory(entry: &MemoryEntry) -> Score { ... }
 
-    // 命名格式: test_{被测功能}_{场景}_{期望结果}
-    #[test]
-    fn test_decay_score_with_zero_hours_returns_full_importance() { ... }
+// 清楚：
+fn calculate_importance_score(entry: &MemoryEntry) -> Score { ... }  // 纯计算
+fn promote_to_shared_layer(&self, entry: &MemoryEntry) -> Result<()> { ... }  // 有副作用
+fn write_and_index(&self, entry: MemoryEntry) -> Result<MemoryId> { ... }  // 写入+索引
+```
 
-    #[tokio::test]
-    async fn test_agent_switch_cleans_l0_cache() { ... }
+### 4.3 配置要有边界，不要成为"万能后门"
 
-    #[test]
-    #[should_panic(expected = "agent_id must not be empty")]
-    fn test_write_with_empty_agent_id_panics() { ... }
+```rust
+// 危险：什么都能配，等于什么都没约束
+pub struct Config {
+    pub arbitrary_options: HashMap<String, Value>,
+}
+
+// 正确：每个配置项都有类型、范围和默认值
+pub struct CacheConfig {
+    /// L1 容量。认知科学研究表明人类工作记忆约 7±2 项。
+    /// 范围: 3-15, 默认: 9
+    pub l1_capacity: BoundedU32<3, 15>,
+    ...
 }
 ```
 
-### 3.3 覆盖率要求
+配置项必须问自己：**如果用户把它设成一个极端值（0、负数、MAX），系统会崩溃吗？** 如果会，就用类型约束它。
 
-| 层级 | 目标 | 工具 |
-|------|------|------|
-| 单元测试 | ≥ 80% 行覆盖 | cargo-llvm-cov |
-| 集成测试 | ≥ 60% | cargo nextest |
-| 性能基准 | 每模块 ≥ 3 个 benchmark | criterion.rs |
+---
 
-### 3.4 性能测试
+## 原则五：错误处理是第一公民，不是事后补丁
+
+错误路径和正常路径一样重要。大部分生产 bug 都发生在"不应该发生"的错误路径上。
+
+### 5.1 错误类型要携带诊断信息
 
 ```rust
-// benches/storage_bench.rs
-use criterion::{criterion_group, criterion_main, Criterion};
+// 没用的错误：告诉你出错了，但你不知道为什么
+#[error("write failed")]
+WriteFailed,
 
-fn bench_l0_cache_write(c: &mut Criterion) {
-    c.bench_function("l0_cache_write", |b| {
-        b.iter(|| {
-            // benchmark body
-        })
-    });
+// 有用的错误：包含诊断上下文
+#[error("Failed to write memory {memory_id} for agent {agent_id}: {source}")]
+WriteFailed {
+    memory_id: MemoryId,
+    agent_id: AgentId,
+    source: Box<dyn std::error::Error + Send + Sync>,
+},
+```
+
+### 5.2 区分"可恢复"和"不可恢复"
+
+```rust
+// 可恢复：API 暂时不可用，切换到本地模型
+EncodingError::ApiTimeout { .. } => fallback_to_local(input).await,
+
+// 可恢复：单条记忆写入失败，跳过并记录
+StorageError::WriteFailed { .. } => {
+    warn!(?error, "Skipping failed write, will retry in next consolidation");
+    continue;
 }
 
-criterion_group!(benches, bench_l0_cache_write);
-criterion_main!(benches);
+// 不可恢复：数据库文件损坏，必须停止并通知用户
+StorageError::DatabaseCorrupted { .. } => {
+    error!(?error, "Database corruption detected");
+    return Err(error);  // 向上传播，让顶层处理
+}
+```
+
+### 5.3 永远不要吞掉错误
+
+```rust
+// 禁止：错误消失了，将来出 bug 时你找不到原因
+let _ = storage.write(entry).await;
+
+// 如果你确实想忽略错误，至少记录下来
+if let Err(e) = storage.write(entry).await {
+    debug!(?e, "Non-critical write failed, continuing");
+}
 ```
 
 ---
 
-## 4. Git 工作流
+## 原则六：为可测试性而设计，而不是为了覆盖率
 
-### 4.1 分支策略
+80% 覆盖率毫无意义——如果测的都是 getter/setter。重要的是测**状态转换**和**边界条件**。
 
-```
-main              ← 稳定分支，CI 全绿才能合入
-├── feature/M1-xx ← 功能开发（按看板任务 ID）
-├── fix/issue-xx  ← Bug 修复
-├── refactor/xxx  ← 重构
-└── perf/xxx      ← 性能优化
-```
+### 6.1 测试行为，不测实现
 
-### 4.2 Commit 规范
+```rust
+// 无价值的测试：只是验证了你调用了某个函数
+#[test]
+fn test_write_calls_lance_db() {
+    let mock = MockLanceDb::new();
+    mock.expect_insert().times(1);
+    storage.write(entry, mock);
+}
 
-遵循 [Conventional Commits](https://www.conventionalcommits.org/):
+// 有价值的测试：验证了一个完整的业务不变量
+#[tokio::test]
+async fn agent_b_cannot_see_agent_a_private_memories() {
+    let store = create_test_store().await;
+    store.write(entry_for_agent("A")).await.unwrap();
 
-```
-<type>(<scope>): <description>
-
-[optional body]
-
-[optional footer]
-```
-
-| Type | 用途 |
-|------|------|
-| `feat` | 新功能 |
-| `fix` | Bug 修复 |
-| `refactor` | 重构（不改变外部行为） |
-| `perf` | 性能优化 |
-| `test` | 测试相关 |
-| `docs` | 文档 |
-| `chore` | 构建/工具/依赖变更 |
-
-Scope 使用模块标识：`storage`, `encoder`, `retriever`, `analyzer`, `consolidation`, `persona`, `api`, `observe`, `core`
-
-示例：
-```
-feat(storage): implement LanceDB vector insert and ANN query
-fix(encoder): handle Gemini API timeout with local fallback
-refactor(core): extract MemoryEntry builder pattern
-perf(retriever): optimize BM25 index update for incremental writes
-test(storage): add agent isolation integration tests
+    let results = store.query(query_as_agent("B")).await.unwrap();
+    assert!(results.is_empty(), "Agent B saw Agent A's private data!");
+}
 ```
 
-### 4.3 PR 检查清单
+### 6.2 每个 bug fix 都要附带回归测试
 
-合入 main 前必须满足：
-- [ ] `cargo fmt --check` 通过
-- [ ] `cargo clippy -- -D warnings` 通过
-- [ ] `cargo nextest run` 全部通过
-- [ ] 新增 pub API 有 doc comment
-- [ ] 涉及存储操作的代码包含 agent_id 隔离
-- [ ] 无 `unwrap()` 在非测试代码中
-- [ ] 性能敏感路径有 benchmark
+修 bug 之前先写一个能复现 bug 的测试（红灯），然后修复直到测试通过（绿灯）。这样这个 bug 永远不会再出现。
+
+### 6.3 性能测试要测真实场景
+
+```rust
+// 无价值：在空库上测插入
+fn bench_insert_empty_db() { ... }
+
+// 有价值：在已有 100K 条记忆的库上测插入（这才是真实场景）
+fn bench_insert_with_100k_existing() {
+    let store = create_store_with_n_entries(100_000);
+    // 现在测插入，这个数字才有参考意义
+}
+```
 
 ---
 
-## 5. 依赖管理
+## 原则七：代码是写给下一个读者的
 
-### 5.1 核心依赖版本锁定
+下一个读者大概率是三个月后的你自己。到时候你已经忘了当初为什么这么写。
 
-在 workspace `Cargo.toml` 中统一管理依赖版本：
+### 7.1 注释解释 WHY，代码本身表达 WHAT
 
-```toml
-[workspace.dependencies]
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "2"
-anyhow = "1"              # 仅用于 bin/tests，库代码用 thiserror
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
-async-trait = "0.1"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1", features = ["v4", "serde"] }
-toml = "0.8"
+```rust
+// 无价值的注释（重复代码已经说的话）
+// 将 importance 乘以衰减因子
+let score = importance * decay_factor;
+
+// 有价值的注释（解释为什么选择这个公式）
+// 指数衰减函数参考 Ebbinghaus 遗忘曲线。
+// λ 参数的四个档位来自认知科学的实证研究：
+// task_context 半衰期 ~1.4 天对应人类对临时任务的遗忘速度，
+// domain_knowledge 半衰期 ~693 天对应长期知识的保持率。
+// 参见: llm_memory_engineering_implementation.md Section 1.2
+let score = importance * (-lambda * hours).exp();
 ```
 
-### 5.2 依赖引入原则
+### 7.2 用领域语言命名，不用技术术语
 
-- 优先使用 Rust 生态已验证的 crate，不重复造轮子
-- 引入新依赖前评估：维护活跃度、依赖树大小、是否 `unsafe`
-- 尽量使用 feature flag 控制可选依赖（如 `local-encoder` 控制 ONNX runtime）
-- 禁止引入仅用于一处的大型依赖
+```rust
+// 技术化命名（要看实现才知道在做什么）
+fn process_items(vec: &[Item], map: &HashMap<String, f32>) -> Vec<Item> { ... }
+
+// 领域化命名（读名字就知道业务含义）
+fn apply_forgetting_decay(memories: &[MemoryEntry], decay_rates: &DecayRateTable) -> Vec<ScoredMemory> { ... }
+```
+
+### 7.3 ADR（架构决策记录）记录你放弃了什么
+
+做决策时，不只记录你选了什么，还要记录你**没选什么以及为什么**。三个月后当你想"要不换个方案试试"时，ADR 会告诉你当初为什么排除了它。
+
+```markdown
+## ADR-001: 向量数据库选型 LanceDB
+
+### 背景
+需要嵌入式向量数据库，个人场景，<1M 向量。
+
+### 选择
+LanceDB
+
+### 放弃的方案
+- Qdrant Embedded: 性能更好，但 Rust binding 不够成熟，需要额外的 gRPC 层
+- Chroma: Python-first，与 Rust 集成需要 FFI 开销
+- 纯 SQLite + 暴力搜索: 10K 以下可行，但无法扩展到 100K+
+
+### 回退条件
+如果 LanceDB 在 >500K 向量时 P99 >100ms，切换到 Qdrant Embedded。
+```
 
 ---
 
-## 6. 安全规范
+## 原则八：对 UMMS 专属的不变量
 
-### 6.1 数据安全
+以下是这个项目独有的、必须刻进 DNA 里的规则。不是通用规则，而是**从 UMMS 的本质推导出来的**。
 
-- API Key 等敏感信息只通过环境变量传入，禁止硬编码或写入配置文件
-- 用户数据存储在 `~/.umms/` 下，目录权限 700
-- SQLite 数据库文件权限 600
-- 不在日志中输出完整向量数据或用户原始内容
+### 8.1 agent_id 是隔离的唯一保证
 
-### 6.2 输入校验
+UMMS 存在的意义之一就是让多个 Agent 的记忆不互相污染。`agent_id` 不是一个"可选参数"，它是系统正确性的**前提条件**。
 
-- 所有外部输入（HTTP 请求、MCP 工具参数、CLI 参数）必须校验
-- agent_id 只允许 `[a-zA-Z0-9_-]`，长度 1-64
-- 文本输入长度上限 100KB（可配置）
-- 文件上传大小上限 50MB（可配置）
+- 每个接触存储的函数，签名中必须有 `agent_id`（或包含 `agent_id` 的类型）
+- 如果一个函数操作存储但没有 `agent_id`，它**必须**是操作共享层的，且函数名中要体现这一点（如 `read_shared_knowledge`）
+- 查询结果中的每条记忆都必须携带 `agent_id` 和 `scope`，调用方可以验证
 
-### 6.3 依赖安全
+### 8.2 记忆层级晋升是单向阀门
 
-- 定期运行 `cargo audit` 检查已知漏洞
-- CI 中集成 `cargo deny` 检查 license 和安全
+L0→L1→L2→L3 的晋升是**不可逆的单向流**。一条记忆可以被删除，但不能从 L3 降级回 L0。这个不变量简化了所有状态推理。
+
+- 例外：共享层的 `demote`（降级到私有层）不是层级降级，是**归属权变更**。
+
+### 8.3 巩固服务是共享层的唯一自动写入者
+
+防止共享知识层被任何 Agent 随意写入导致污染。只有两种途径：
+1. 巩固服务自动提升（满足 importance/跨Agent引用/存活时间 三个条件）
+2. 用户通过 promote API 手动提升
+
+任何绕过这两个路径写入共享层的代码都是 bug。
+
+### 8.4 编码降级必须对调用方透明
+
+当 Gemini API 不可用时，系统自动切到本地 ONNX 编码。但上层模块**不应该关心**当前用的是哪个编码器。返回的向量格式、维度、后续处理流程都应该一致。如果本地模型的向量维度不同，适配是编码模块内部的事。
+
+### 8.5 切换 Agent ≠ 杀死 Agent
+
+切换 Agent 是"挂起 + 恢复"，不是"销毁 + 重建"。前一个 Agent 的状态完整保留在快照中，下次切回来应该**无感恢复**到离开时的状态。设计任何 Agent 相关功能时都要问：**切换后恢复，这个功能的状态还在吗？**
+
+---
+
+## 检验清单
+
+写完一段代码后，问自己：
+
+- [ ] 如果删掉这段代码的所有注释，一个新人仅通过类型签名和函数名能理解它在做什么吗？
+- [ ] 如果把底层存储从 LanceDB 换成 Qdrant，这段代码需要改吗？（存储层之外的代码应该不需要改）
+- [ ] 这段代码有没有接受一个 `String` 参数，而这个参数其实应该是一个更具体的类型？
+- [ ] 如果这个函数的输入是一个极端值（空字符串、空数组、MAX_INT），会发生什么？
+- [ ] 这段代码有没有"先做A再做B"的隐式顺序依赖？如果有，能不能通过类型系统强制这个顺序？
+- [ ] 三个月后看到这段代码，你能在 30 秒内理解它为什么存在吗？
