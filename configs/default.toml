@@ -1,0 +1,70 @@
+# UMMS Default Configuration
+# Override with environment variables: UMMS_SERVER_PORT=8720
+
+[server]
+host = "127.0.0.1"
+port = 8720
+workers = 4
+# API key for authentication (empty = disabled, suitable for local use)
+api_key = ""
+
+[storage]
+data_dir = "~/.umms/data"
+lance_db_path = "~/.umms/data/lancedb"
+sqlite_path = "~/.umms/data/umms.db"
+raw_storage_path = "~/.umms/storage"
+
+[cache]
+l0_capacity = 1000
+l0_ttl_secs = 30
+l1_capacity = 9            # Miller's Law: 7±2
+l1_tti_secs = 300
+
+[encoder]
+provider = "gemini"         # "gemini" | "local" | "auto"
+gemini_api_key_env = "GEMINI_API_KEY"
+embedding_model = "text-embedding-004"
+embedding_dim = 3072
+fallback_enabled = true
+local_model_path = "~/.umms/models/"
+request_timeout_ms = 3000
+max_retries = 3
+
+[retriever]
+bm25_weight = 0.3
+vector_weight = 0.7
+top_k_recall = 200
+top_k_rerank = 20
+top_k_final = 10
+lif_diffusion_hops = 2
+result_cache_ttl_secs = 60
+
+[consolidation]
+schedule_interval_hours = 6
+event_trigger_threshold = 500
+wkd_compression_ratio = 0.5
+wkd_min_cluster_size = 3
+
+[consolidation.decay_rates]
+task_context = 0.5
+session_topic = 0.1
+user_preference = 0.01
+domain_knowledge = 0.001
+
+[isolation]
+default_shared_access = true
+promotion_min_importance = 0.7
+promotion_min_cross_refs = 2
+promotion_min_age_hours = 24
+
+[observe]
+metrics_enabled = true
+tracing_enabled = true
+dashboard_port = 8721       # 0 = disabled
+log_level = "info"
+log_format = "json"         # "json" | "pretty"
+log_file = ""               # empty = stdout
+
+[mcp]
+enabled = true
+transport = "stdio"         # "stdio" | "sse"

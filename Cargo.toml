@@ -1,0 +1,79 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/umms-core",
+    "crates/umms-storage",
+    "crates/umms-encoder",
+    "crates/umms-retriever",
+    "crates/umms-analyzer",
+    "crates/umms-consolidation",
+    "crates/umms-persona",
+    "crates/umms-api",
+    "crates/umms-observe",
+    "crates/umms-python",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+authors = ["kazeli"]
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging & tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Time & ID
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Storage
+lancedb = "0.15"
+rusqlite = { version = "0.32", features = ["bundled"] }
+moka = { version = "0.12", features = ["future"] }
+petgraph = "0.6"
+
+# HTTP
+axum = { version = "0.8", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+reqwest = { version = "0.12", features = ["json"] }
+
+# Search
+tantivy = "0.22"
+
+# Metrics
+prometheus-client = "0.22"
+
+# Config
+config = "0.14"
+
+# Testing
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+# Internal crates
+umms-core = { path = "crates/umms-core" }
+umms-storage = { path = "crates/umms-storage" }
+umms-encoder = { path = "crates/umms-encoder" }
+umms-retriever = { path = "crates/umms-retriever" }
+umms-analyzer = { path = "crates/umms-analyzer" }
+umms-consolidation = { path = "crates/umms-consolidation" }
+umms-persona = { path = "crates/umms-persona" }
+umms-api = { path = "crates/umms-api" }
+umms-observe = { path = "crates/umms-observe" }
+umms-python = { path = "crates/umms-python" }

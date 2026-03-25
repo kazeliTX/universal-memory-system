@@ -1,0 +1,61 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# UMMS runtime data
+data/
+storage/
+*.db
+*.db-wal
+*.db-shm
+
+# Models (large binary)
+models/
+*.onnx
+*.bin
+*.safetensors
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Coverage
+lcov.info
+coverage/
+tarpaulin-report.html
+
+# Benchmark results (keep baseline, ignore temp)
+target/criterion/
+
+# Claude Code
+.claude/
