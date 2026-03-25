@@ -9,7 +9,9 @@
 //! and trait interfaces that other crates depend on.
 
 pub mod error;
+pub mod traits;
 pub mod types;
 
-pub use error::UmmsError;
+pub use error::{Result, StorageError, UmmsError};
+pub use traits::*;
 pub use types::*;
