@@ -420,6 +420,15 @@ pub struct KgEdge {
     pub created_at: DateTime<Utc>,
 }
 
+/// Summary statistics for a knowledge graph scope.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GraphStats {
+    pub node_count: u64,
+    pub edge_count: u64,
+    pub shared_node_count: u64,
+    pub shared_edge_count: u64,
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

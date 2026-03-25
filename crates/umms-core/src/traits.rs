@@ -88,13 +88,43 @@ pub trait VectorStore: Send + Sync {
 // ---------------------------------------------------------------------------
 
 /// Knowledge graph storage for semantic memory (L3).
+///
+/// This trait is designed to be the **only** graph interface that upper layers
+/// (M3 retrieval, M4 consolidation) interact with. The goal is to make backend
+/// swaps (SQLite→Kùzu, petgraph→neo4j) a local change inside `umms-storage`.
+///
+/// If you find yourself needing a graph operation that this trait doesn't cover,
+/// **add it here** rather than reaching into the implementation. The moment upper
+/// layers bypass this trait, the abstraction is broken and migration cost explodes.
 #[async_trait]
 pub trait KnowledgeGraphStore: Send + Sync {
+    // ----- Basic CRUD -----
+
     /// Add a node. Returns the assigned `NodeId`.
     async fn add_node(&self, node: &KgNode) -> Result<NodeId>;
 
     /// Add an edge.
     async fn add_edge(&self, edge: &KgEdge) -> Result<EdgeId>;
+
+    /// Get a node by ID.
+    async fn get_node(&self, id: &NodeId) -> Result<Option<KgNode>>;
+
+    /// Delete a node and all its incident edges.
+    async fn delete_node(&self, id: &NodeId) -> Result<()>;
+
+    /// Delete an edge.
+    async fn delete_edge(&self, id: &EdgeId) -> Result<()>;
+
+    /// Update a node's properties, importance, or label.
+    async fn update_node(
+        &self,
+        id: &NodeId,
+        label: Option<&str>,
+        properties: Option<&serde_json::Value>,
+        importance: Option<f32>,
+    ) -> Result<()>;
+
+    // ----- Query -----
 
     /// Find nodes by label substring, scoped to agent + shared.
     async fn find_nodes(
@@ -104,10 +134,8 @@ pub trait KnowledgeGraphStore: Send + Sync {
         limit: usize,
     ) -> Result<Vec<KgNode>>;
 
-    /// Get a node by ID.
-    async fn get_node(&self, id: &NodeId) -> Result<Option<KgNode>>;
-
     /// Traverse the graph from a starting node up to `max_hops` edges away.
+    /// Returns (visited nodes, traversed edges), scoped to agent + shared.
     async fn traverse(
         &self,
         start: &NodeId,
@@ -115,11 +143,56 @@ pub trait KnowledgeGraphStore: Send + Sync {
         agent_id: Option<&AgentId>,
     ) -> Result<(Vec<KgNode>, Vec<KgEdge>)>;
 
-    /// Delete a node and all its incident edges.
-    async fn delete_node(&self, id: &NodeId) -> Result<()>;
+    /// Get all edges incident to a node (both incoming and outgoing).
+    async fn edges_of(&self, node_id: &NodeId) -> Result<Vec<KgEdge>>;
 
-    /// Delete an edge.
-    async fn delete_edge(&self, id: &EdgeId) -> Result<()>;
+    /// Get all nodes owned by an agent (plus shared nodes).
+    /// Used by consolidation to scan an agent's entire knowledge subgraph.
+    async fn nodes_for_agent(
+        &self,
+        agent_id: &AgentId,
+        include_shared: bool,
+    ) -> Result<Vec<KgNode>>;
+
+    // ----- Consolidation / Evolution (M4 will need these) -----
+
+    /// Merge two nodes into one. All edges pointing to `absorbed` are redirected
+    /// to `surviving`. The `absorbed` node is deleted. Properties are merged
+    /// according to the provided strategy.
+    ///
+    /// Returns the list of edge IDs that were redirected.
+    ///
+    /// This is an atomic operation — if any step fails, nothing changes.
+    async fn merge_nodes(
+        &self,
+        surviving: &NodeId,
+        absorbed: &NodeId,
+        merged_properties: serde_json::Value,
+    ) -> Result<Vec<EdgeId>>;
+
+    /// Batch-update edge weights. Used during consolidation to strengthen
+    /// frequently co-accessed relationships.
+    async fn batch_update_edge_weights(
+        &self,
+        updates: &[(EdgeId, f32)],
+    ) -> Result<()>;
+
+    /// Find node pairs whose labels or embeddings are similar.
+    /// Returns (node_a, node_b, similarity_score) tuples, ordered by similarity desc.
+    /// `min_similarity` filters pairs below the threshold.
+    ///
+    /// This powers the "detect candidates for merge" step in graph evolution.
+    /// The implementation can use label fuzzy matching, property overlap, or
+    /// vector similarity — whatever the backend supports.
+    async fn find_similar_node_pairs(
+        &self,
+        agent_id: Option<&AgentId>,
+        min_similarity: f32,
+        limit: usize,
+    ) -> Result<Vec<(KgNode, KgNode, f32)>>;
+
+    /// Count nodes and edges for an agent (for observability metrics).
+    async fn stats(&self, agent_id: Option<&AgentId>) -> Result<GraphStats>;
 }
 
 // ---------------------------------------------------------------------------
