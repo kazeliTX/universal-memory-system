@@ -10,3 +10,5 @@ pub mod cache;
 pub mod file;
 pub mod graph;
 pub mod isolation;
+pub mod promotion;
+pub mod vector;
