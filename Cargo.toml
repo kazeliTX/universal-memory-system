@@ -43,7 +43,10 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # Storage
-lancedb = "0.15"
+lancedb = "0.27"
+arrow-array = "57"
+arrow-schema = "57"
+futures = "0.3"
 rusqlite = { version = "0.32", features = ["bundled"] }
 moka = { version = "0.12", features = ["future"] }
 petgraph = "0.6"
