@@ -4,6 +4,7 @@
 //! agent context can be suspended and resumed across switches.
 
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;

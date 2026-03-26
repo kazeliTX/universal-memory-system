@@ -6,6 +6,8 @@
 //! [`SqliteAgentContextManager`] and implements the full
 //! snapshot-evict-restore cycle.
 
+use std::str::FromStr;
+
 use chrono::Utc;
 
 use umms_core::error::Result;

@@ -10,7 +10,7 @@
 use serde::Deserialize;
 
 /// Root configuration.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct UmmsConfig {
     pub cache: CacheConfig,
@@ -154,18 +154,6 @@ pub struct StorageConfig {
 // Defaults
 // ---------------------------------------------------------------------------
 
-impl Default for UmmsConfig {
-    fn default() -> Self {
-        Self {
-            cache: CacheConfig::default(),
-            promotion: PromotionConfig::default(),
-            decay: DecayConfig::default(),
-            encoder: EncoderConfig::default(),
-            retriever: RetrieverConfig::default(),
-            storage: StorageConfig::default(),
-        }
-    }
-}
 
 impl Default for CacheConfig {
     fn default() -> Self {

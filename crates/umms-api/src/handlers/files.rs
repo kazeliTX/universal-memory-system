@@ -6,7 +6,7 @@ use axum::extract::{Path, State};
 use axum::response::Json;
 
 use umms_core::traits::RawFileStore;
-use umms_core::types::AgentId;
+use umms_core::types::{AgentId, FromStr};
 
 use crate::handlers::memory::ApiError;
 use crate::response::FileListResponse;

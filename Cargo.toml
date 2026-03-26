@@ -15,6 +15,21 @@ members = [
     "tests/integration",
 ]
 
+[workspace.lints.clippy]
+# Enable pedantic as warnings (not errors)
+all = "warn"
+pedantic = "warn"
+# Pedantic lints we intentionally allow workspace-wide
+doc_markdown = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+wildcard_imports = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

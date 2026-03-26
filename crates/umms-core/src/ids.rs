@@ -19,9 +19,19 @@ macro_rules! define_id {
                 Self(Uuid::new_v4().to_string())
             }
 
-            /// Wrap an existing string as this ID type.
+            /// Access the inner string. Use sparingly — prefer passing the typed ID.
+            #[must_use]
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl std::str::FromStr for $name {
+            type Err = &'static str;
+
+            /// Parse a string into this ID type.
             /// Validates: non-empty, only `[a-zA-Z0-9_-]`, max 128 chars.
-            pub fn from_str(s: &str) -> std::result::Result<Self, &'static str> {
+            fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
                 if s.is_empty() {
                     return Err("ID must not be empty");
                 }
@@ -32,12 +42,6 @@ macro_rules! define_id {
                     return Err("ID must only contain [a-zA-Z0-9_-]");
                 }
                 Ok(Self(s.to_owned()))
-            }
-
-            /// Access the inner string. Use sparingly — prefer passing the typed ID.
-            #[must_use]
-            pub fn as_str(&self) -> &str {
-                &self.0
             }
         }
 
@@ -83,6 +87,8 @@ define_id!(
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
 
     #[test]

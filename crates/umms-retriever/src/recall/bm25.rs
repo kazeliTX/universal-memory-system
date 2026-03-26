@@ -5,6 +5,7 @@
 //! indexed here via `index_entry`. The index lives in-memory by default
 //! but can be persisted to disk.
 
+use std::str::FromStr;
 use std::sync::Arc;
 
 use tantivy::collector::TopDocs;

@@ -12,7 +12,7 @@ use tracing::instrument;
 use umms_core::config::RetrieverConfig;
 use umms_core::error::Result;
 use umms_core::traits::{Encoder, VectorStore};
-use umms_core::types::{AgentId, ScoredMemory, ScoreSource};
+use umms_core::types::{AgentId, FromStr, ScoredMemory, ScoreSource};
 
 use super::bm25::Bm25Index;
 

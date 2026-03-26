@@ -111,36 +111,17 @@ impl RetrievalPipeline {
         let vector_only = hybrid_result.vector_only;
         let both = hybrid_result.both;
 
-        // Filter: remove low-relevance candidates BEFORE reranking
-        if self.config.min_score > 0.0 {
-            hybrid_result.hits.retain(|h| h.memory.score >= self.config.min_score);
-        }
-
         let recall_count = hybrid_result.hits.len();
 
-        // Early return if nothing survived filtering
-        if hybrid_result.hits.is_empty() {
-            latency.total_ms = total_start.elapsed().as_millis() as u64;
-            return Ok(PipelineResult {
-                retrieval: RetrievalResult {
-                    entries: Vec::new(),
-                    diffusion_entries: Vec::new(),
-                    latency,
-                },
-                hit_sources: Vec::new(),
-                bm25_only,
-                vector_only,
-                both,
-                recall_count,
-                rerank_count: 0,
-                diffusion_count: 0,
-            });
-        }
-
-        // Stage 2: Rerank (only on candidates that passed min_score)
+        // Stage 2: Rerank (cosine similarity re-scoring)
         let rerank_start = std::time::Instant::now();
-        let reranked = self.rerank(hybrid_result.hits, &query_vector);
+        let mut reranked = self.rerank(hybrid_result.hits, &query_vector);
         latency.rerank_ms = rerank_start.elapsed().as_millis() as u64;
+
+        // Filter by min_score AFTER rerank — scores are now cosine similarity (0-1 range)
+        if self.config.min_score > 0.0 {
+            reranked.retain(|h| h.memory.score >= self.config.min_score);
+        }
         let rerank_count = reranked.len();
 
         // Stage 3: Diffusion

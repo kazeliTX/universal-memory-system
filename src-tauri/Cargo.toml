@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "UMMS Desktop Application — Personal Memory System"
 
+[lints]
+workspace = true
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

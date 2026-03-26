@@ -6,6 +6,7 @@
 //!
 //! Cache key is `(String, String)` representing `(agent_id, memory_id)`.
 
+use std::str::FromStr;
 use std::time::Duration;
 
 use async_trait::async_trait;

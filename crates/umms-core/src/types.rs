@@ -6,6 +6,8 @@
 //! - `enums.rs`: Domain enums (Modality, MemoryLayer, ...)
 //! - `memory.rs`: MemoryEntry, query types, knowledge graph types
 
+pub use std::str::FromStr;
+
 pub use crate::enums::*;
 pub use crate::ids::*;
 pub use crate::memory::*;

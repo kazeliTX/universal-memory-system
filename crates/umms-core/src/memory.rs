@@ -1,5 +1,7 @@
 //! Memory entry types: the fundamental unit of storage, plus query/result types.
 
+use std::str::FromStr;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 

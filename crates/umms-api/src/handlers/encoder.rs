@@ -5,6 +5,8 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
 
+use std::str::FromStr;
+
 use umms_core::traits::{Encoder, VectorStore};
 use umms_observe::{AuditEventBuilder, AuditEventType};
 
