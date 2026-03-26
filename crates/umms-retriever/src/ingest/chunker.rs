@@ -80,12 +80,7 @@ pub fn chunk_text(text: &str, config: &ChunkerConfig) -> Vec<Chunk> {
             });
 
             // Start new chunk with overlap from the end of previous
-            let overlap_start = if current_text.len() > config.overlap {
-                current_text.len() - config.overlap
-            } else {
-                0
-            };
-            // Find a word boundary for overlap
+            let overlap_start = find_char_boundary(&current_text, config.overlap);
             let overlap_text = find_word_boundary(&current_text[overlap_start..]);
             current_text = overlap_text.to_owned();
             chunk_start_offset = current_offset.saturating_sub(config.overlap);
@@ -103,11 +98,7 @@ pub fn chunk_text(text: &str, config: &ChunkerConfig) -> Vec<Chunk> {
                         index: chunks.len(),
                         char_offset: chunk_start_offset,
                     });
-                    let overlap_start = if current_text.len() > config.overlap {
-                        current_text.len() - config.overlap
-                    } else {
-                        0
-                    };
+                    let overlap_start = find_char_boundary(&current_text, config.overlap);
                     let overlap_text = find_word_boundary(&current_text[overlap_start..]);
                     current_text = overlap_text.to_owned();
                     chunk_start_offset = current_offset.saturating_sub(config.overlap);
@@ -171,6 +162,20 @@ fn split_sentences(text: &str) -> Vec<&str> {
     }
 
     sentences
+}
+
+/// Find a valid UTF-8 char boundary for overlap, counting back `overlap` bytes
+/// from the end of the string. Returns a byte index that is safe to slice at.
+fn find_char_boundary(s: &str, overlap: usize) -> usize {
+    if s.len() <= overlap {
+        return 0;
+    }
+    let mut idx = s.len() - overlap;
+    // Walk forward to the nearest char boundary
+    while idx < s.len() && !s.is_char_boundary(idx) {
+        idx += 1;
+    }
+    idx
 }
 
 /// Find the nearest word boundary (space) at or after the given position.
@@ -243,5 +248,30 @@ mod tests {
     fn sentence_splitting_basic() {
         let sentences = split_sentences("First sentence. Second sentence. Third.");
         assert_eq!(sentences.len(), 3);
+    }
+
+    #[test]
+    fn chinese_text_does_not_panic() {
+        let text = "脑神经科学与大模型交叉领域前沿研究全景。\n\n\
+                    神经科学中的记忆巩固、脉冲编码、预测编码等机制为AI架构创新提供了方向。\n\n\
+                    这是第三段，测试中文分块不会在多字节字符中间切割。";
+        let config = ChunkerConfig {
+            target_size: 50,
+            overlap: 20,
+        };
+        // Should not panic on UTF-8 multi-byte chars
+        let chunks = chunk_text(text, &config);
+        assert!(!chunks.is_empty());
+        for chunk in &chunks {
+            assert!(!chunk.text.is_empty());
+        }
+    }
+
+    #[test]
+    fn find_char_boundary_on_chinese() {
+        let s = "你好世界Hello";
+        // "你好世界" = 12 bytes, "Hello" = 5 bytes, total = 17
+        let idx = find_char_boundary(s, 10);
+        assert!(s.is_char_boundary(idx));
     }
 }
