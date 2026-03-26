@@ -17,7 +17,22 @@ use umms_core::traits::{
 use umms_core::types::{AgentId, ScoredMemory, ScoreSource};
 
 use crate::recall::bm25::Bm25Index;
-use crate::recall::hybrid::HybridRecall;
+use crate::recall::hybrid::{HitSourceInfo, HybridHit, HybridRecall};
+
+/// Extended result with per-hit source tracking for dashboard visualization.
+#[derive(Debug)]
+pub struct PipelineResult {
+    pub retrieval: RetrievalResult,
+    /// Per-hit source info (same order as retrieval.entries).
+    pub hit_sources: Vec<HitSourceInfo>,
+    /// How many hits came from BM25 only / Vector only / both.
+    pub bm25_only: usize,
+    pub vector_only: usize,
+    pub both: usize,
+    pub recall_count: usize,
+    pub rerank_count: usize,
+    pub diffusion_count: usize,
+}
 
 /// The full retrieval pipeline.
 pub struct RetrievalPipeline {
@@ -45,31 +60,127 @@ impl RetrievalPipeline {
     }
 
     /// Stage 2: Rerank using cosine similarity re-scoring.
-    ///
-    /// For now, use simple cosine re-scoring against the query vector.
-    /// Future: cross-encoder or LLM-based reranking.
     fn rerank(
         &self,
-        candidates: Vec<ScoredMemory>,
+        candidates: Vec<HybridHit>,
         query_vector: &[f32],
-    ) -> Vec<ScoredMemory> {
+    ) -> Vec<HybridHit> {
         let top_k = self.config.top_k_rerank;
-        let mut scored: Vec<ScoredMemory> = candidates
+        let mut scored: Vec<HybridHit> = candidates
             .into_iter()
-            .map(|mut sm| {
-                // Re-score using cosine similarity if vector is available
-                if let Some(ref vec) = sm.entry.vector {
+            .map(|mut hit| {
+                if let Some(ref vec) = hit.memory.entry.vector {
                     if !vec.is_empty() {
-                        sm.score = cosine_similarity(query_vector, vec);
+                        hit.memory.score = cosine_similarity(query_vector, vec);
                     }
                 }
-                sm
+                hit
             })
             .collect();
 
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.memory
+                .score
+                .partial_cmp(&a.memory.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.truncate(top_k);
         scored
+    }
+
+    /// Full pipeline returning rich source-tracking data for visualization.
+    pub async fn retrieve_with_sources(
+        &self,
+        query: &str,
+        agent_id: &AgentId,
+    ) -> Result<PipelineResult> {
+        let total_start = std::time::Instant::now();
+        let mut latency = RetrievalLatency::default();
+
+        // Stage 0: Encode
+        let encode_start = std::time::Instant::now();
+        let query_vector = self.encoder.encode_text(query).await?;
+        latency.encode_ms = encode_start.elapsed().as_millis() as u64;
+
+        // Stage 1: Hybrid recall
+        let recall_start = std::time::Instant::now();
+        let mut hybrid_result = self.hybrid.recall(query, agent_id, &query_vector).await?;
+        latency.recall_ms = recall_start.elapsed().as_millis() as u64;
+    
+        let bm25_only = hybrid_result.bm25_only;
+        let vector_only = hybrid_result.vector_only;
+        let both = hybrid_result.both;
+
+        // Filter: remove low-relevance candidates BEFORE reranking
+        if self.config.min_score > 0.0 {
+            hybrid_result.hits.retain(|h| h.memory.score >= self.config.min_score);
+        }
+
+        let recall_count = hybrid_result.hits.len();
+
+        // Early return if nothing survived filtering
+        if hybrid_result.hits.is_empty() {
+            latency.total_ms = total_start.elapsed().as_millis() as u64;
+            return Ok(PipelineResult {
+                retrieval: RetrievalResult {
+                    entries: Vec::new(),
+                    diffusion_entries: Vec::new(),
+                    latency,
+                },
+                hit_sources: Vec::new(),
+                bm25_only,
+                vector_only,
+                both,
+                recall_count,
+                rerank_count: 0,
+                diffusion_count: 0,
+            });
+        }
+
+        // Stage 2: Rerank (only on candidates that passed min_score)
+        let rerank_start = std::time::Instant::now();
+        let reranked = self.rerank(hybrid_result.hits, &query_vector);
+        latency.rerank_ms = rerank_start.elapsed().as_millis() as u64;
+        let rerank_count = reranked.len();
+
+        // Stage 3: Diffusion
+        let reranked_memories: Vec<ScoredMemory> =
+            reranked.iter().map(|h| h.memory.clone()).collect();
+        let diffusion_entries = if self.config.lif_hops > 0 {
+            let diff_start = std::time::Instant::now();
+            let diff = self.diffuse(&reranked_memories, agent_id).await?;
+            latency.diffusion_ms = diff_start.elapsed().as_millis() as u64;
+            diff
+        } else {
+            Vec::new()
+        };
+        let diffusion_count = diffusion_entries.len();
+
+        // Truncate to final count
+        let mut final_hits = reranked;
+        final_hits.truncate(self.config.top_k_final);
+
+        latency.total_ms = total_start.elapsed().as_millis() as u64;
+
+        let hit_sources: Vec<HitSourceInfo> =
+            final_hits.iter().map(|h| h.source_info.clone()).collect();
+        let entries: Vec<ScoredMemory> =
+            final_hits.into_iter().map(|h| h.memory).collect();
+
+        Ok(PipelineResult {
+            retrieval: RetrievalResult {
+                entries,
+                diffusion_entries,
+                latency,
+            },
+            hit_sources,
+            bm25_only,
+            vector_only,
+            both,
+            recall_count,
+            rerank_count,
+            diffusion_count,
+        })
     }
 
     /// Stage 3: LIF cognitive diffusion — expand results via knowledge graph.
@@ -149,58 +260,8 @@ impl Retriever for RetrievalPipeline {
         query: &str,
         agent_id: &AgentId,
     ) -> Result<RetrievalResult> {
-        let total_start = std::time::Instant::now();
-        let mut latency = RetrievalLatency::default();
-
-        // Stage 0: Encode query
-        let encode_start = std::time::Instant::now();
-        let query_vector = self.encoder.encode_text(query).await?;
-        latency.encode_ms = encode_start.elapsed().as_millis() as u64;
-
-        // Stage 1: Hybrid recall
-        let recall_start = std::time::Instant::now();
-        let recalled = self.hybrid.recall(query, agent_id, &query_vector).await?;
-        latency.recall_ms = recall_start.elapsed().as_millis() as u64;
-
-        // Stage 2: Rerank
-        let rerank_start = std::time::Instant::now();
-        let reranked = self.rerank(recalled, &query_vector);
-        latency.rerank_ms = rerank_start.elapsed().as_millis() as u64;
-
-        // Stage 3: Diffusion (auto-escalate per ADR-012)
-        let diffusion_entries = if self.config.auto_escalate
-            && reranked.len() < self.config.escalation_threshold
-        {
-            let diff_start = std::time::Instant::now();
-            let diff = self.diffuse(&reranked, agent_id).await?;
-            latency.diffusion_ms = diff_start.elapsed().as_millis() as u64;
-            diff
-        } else if self.config.lif_hops > 0 {
-            // Always run diffusion if configured, even when results are sufficient
-            let diff_start = std::time::Instant::now();
-            let diff = self.diffuse(&reranked, agent_id).await?;
-            latency.diffusion_ms = diff_start.elapsed().as_millis() as u64;
-            diff
-        } else {
-            Vec::new()
-        };
-
-        // Final: take top_k_final
-        let mut final_results = reranked;
-        final_results.truncate(self.config.top_k_final);
-
-        // Filter by min_score
-        if self.config.min_score > 0.0 {
-            final_results.retain(|sm| sm.score >= self.config.min_score);
-        }
-
-        latency.total_ms = total_start.elapsed().as_millis() as u64;
-
-        Ok(RetrievalResult {
-            entries: final_results,
-            diffusion_entries,
-            latency,
-        })
+        let result = self.retrieve_with_sources(query, agent_id).await?;
+        Ok(result.retrieval)
     }
 
     async fn recall_only(
@@ -210,9 +271,9 @@ impl Retriever for RetrievalPipeline {
         top_k: usize,
     ) -> Result<Vec<ScoredMemory>> {
         let query_vector = self.encoder.encode_text(query).await?;
-        let mut results = self.hybrid.recall(query, agent_id, &query_vector).await?;
-        results.truncate(top_k);
-        Ok(results)
+        let mut result = self.hybrid.recall(query, agent_id, &query_vector).await?;
+        result.hits.truncate(top_k);
+        Ok(result.hits.into_iter().map(|h| h.memory).collect())
     }
 }
 

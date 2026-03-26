@@ -5,11 +5,13 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
 
-use umms_core::traits::{Encoder, Retriever, VectorStore};
+use umms_core::traits::{Encoder, VectorStore};
 use umms_observe::{AuditEventBuilder, AuditEventType};
 
 use crate::AppState;
-use crate::response::{EncoderStatusResponse, SearchHit, SemanticSearchResponse};
+use crate::response::{
+    EncoderStatusResponse, PipelineLatency, PipelineStats, SearchHit, SemanticSearchResponse,
+};
 
 /// POST /api/encode — encode a single text into a vector.
 pub async fn encode_text(
@@ -85,21 +87,57 @@ pub async fn semantic_search(
     .map_err(|e| format!("Invalid agent_id: {e}"))?;
 
     // Try hybrid pipeline first, fall back to pure vector search
-    let (results, latency_ms) = if let Some(ref retriever) = state.retriever {
-        let result = retriever
-            .retrieve(&body.query, &agent_id)
+    let (results, latency, pipeline) = if let Some(ref retriever) = state.retriever {
+        let pr = retriever
+            .retrieve_with_sources(&body.query, &agent_id)
             .await
             .map_err(|e| format!("Retrieval failed: {e}"))?;
 
-        let hits: Vec<SearchHit> = result
+        let hits: Vec<SearchHit> = pr
+            .retrieval
             .entries
             .into_iter()
-            .map(|sm| SearchHit { entry: sm.entry, score: sm.score })
+            .zip(pr.hit_sources.into_iter())
+            .map(|(sm, src)| {
+                let source = match (src.bm25_rank, src.vector_rank) {
+                    (Some(_), Some(_)) => "both",
+                    (Some(_), None) => "bm25_only",
+                    (None, Some(_)) => "vector_only",
+                    _ => "unknown",
+                };
+                SearchHit {
+                    entry: sm.entry,
+                    score: sm.score,
+                    source: source.to_owned(),
+                    bm25_rank: src.bm25_rank,
+                    vector_rank: src.vector_rank,
+                    bm25_contribution: src.bm25_contribution,
+                    vector_contribution: src.vector_contribution,
+                }
+            })
             .collect();
 
-        (hits, result.latency.total_ms)
+        let lat = PipelineLatency {
+            encode_ms: pr.retrieval.latency.encode_ms,
+            recall_ms: pr.retrieval.latency.recall_ms,
+            rerank_ms: pr.retrieval.latency.rerank_ms,
+            diffusion_ms: pr.retrieval.latency.diffusion_ms,
+            total_ms: pr.retrieval.latency.total_ms,
+        };
+
+        let stats = PipelineStats {
+            recall_count: pr.recall_count,
+            rerank_count: pr.rerank_count,
+            diffusion_count: pr.diffusion_count,
+            final_count: hits.len(),
+            bm25_only: pr.bm25_only,
+            vector_only: pr.vector_only,
+            both: pr.both,
+        };
+
+        (hits, lat, stats)
     } else {
-        // Fallback: pure vector search (same as before)
+        // Fallback: pure vector search
         let start = std::time::Instant::now();
         let encoder = state
             .encoder
@@ -122,10 +160,29 @@ pub async fn semantic_search(
 
         let hits: Vec<SearchHit> = scored
             .into_iter()
-            .map(|sm| SearchHit { entry: sm.entry, score: sm.score })
+            .map(|sm| SearchHit {
+                entry: sm.entry,
+                score: sm.score,
+                source: "vector_only".to_owned(),
+                bm25_rank: None,
+                vector_rank: None,
+                bm25_contribution: 0.0,
+                vector_contribution: 0.0,
+            })
             .collect();
 
-        (hits, start.elapsed().as_millis() as u64)
+        let lat = PipelineLatency {
+            total_ms: start.elapsed().as_millis() as u64,
+            ..PipelineLatency::default()
+        };
+
+        let stats = PipelineStats {
+            final_count: hits.len(),
+            vector_only: hits.len(),
+            ..PipelineStats::default()
+        };
+
+        (hits, lat, stats)
     };
 
     state.audit.record(
@@ -134,14 +191,15 @@ pub async fn semantic_search(
                 "action": "semantic_search",
                 "query": &body.query,
                 "results": results.len(),
-                "latency_ms": latency_ms,
+                "latency_ms": latency.total_ms,
             })),
     );
 
     Ok(Json(SemanticSearchResponse {
         query: body.query,
         results,
-        latency_ms,
+        latency,
+        pipeline,
     }))
 }
 

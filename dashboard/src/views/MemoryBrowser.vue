@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed, h } from 'vue'
 import {
   NCard, NSpace, NSelect, NRadioGroup, NRadioButton,
   NDataTable, NTag, NEmpty, NSpin, NInput, NButton,
-  NCollapse, NCollapseItem,
+  NProgress, NTooltip, NStatistic, NGrid, NGi,
   type DataTableColumns,
 } from 'naive-ui'
 import { getCacheEntries, getVectorEntries, semanticSearch } from '@/api/client'
-import type { MemoryEntry, SemanticSearchResponse } from '@/types'
+import type { MemoryEntry, SemanticSearchResponse, SearchHit } from '@/types'
 
 const agents = ['coder', 'researcher', 'writer']
 const selectedAgent = ref('coder')
@@ -31,13 +31,75 @@ const columns: DataTableColumns<MemoryEntry> = [
   { title: 'Created', key: 'created_at', width: 180, render: (row) => new Date(row.created_at).toLocaleString() },
 ]
 
-const searchColumns: DataTableColumns<{ entry: MemoryEntry; score: number }> = [
-  { title: 'Score', key: 'score', width: 90, render: (row) => row.score.toFixed(4) },
-  { title: 'Agent', key: 'agent', width: 100, render: (row) => row.entry.agent_id },
-  { title: 'Content', key: 'content', ellipsis: { tooltip: true }, render: (row) => row.entry.content_text ?? '-' },
-  { title: 'Scope', key: 'scope', width: 90, render: (row) => row.entry.scope },
-  { title: 'Importance', key: 'importance', width: 100, render: (row) => row.entry.importance.toFixed(2) },
-  { title: 'Tags', key: 'tags', width: 150, render: (row) => row.entry.tags.join(', ') },
+// Source tag colors
+function sourceTag(source: string) {
+  const map: Record<string, { type: any; label: string }> = {
+    both: { type: 'success', label: 'BM25+Vec' },
+    bm25_only: { type: 'warning', label: 'BM25' },
+    vector_only: { type: 'info', label: 'Vector' },
+    diffusion: { type: 'default', label: 'Diffusion' },
+    unknown: { type: 'default', label: '?' },
+  }
+  return map[source] ?? map.unknown!
+}
+
+const searchColumns: DataTableColumns<SearchHit> = [
+  {
+    title: 'Score',
+    key: 'score',
+    width: 80,
+    render: (row) => row.score.toFixed(4),
+  },
+  {
+    title: 'Source',
+    key: 'source',
+    width: 110,
+    render: (row) => {
+      const tag = sourceTag(row.source)
+      const parts: string[] = []
+      if (row.bm25_rank) parts.push(`BM25 #${row.bm25_rank}`)
+      if (row.vector_rank) parts.push(`Vec #${row.vector_rank}`)
+      return h(NTooltip, null, {
+        trigger: () => h(NTag, { type: tag.type, size: 'small', round: true }, () => tag.label),
+        default: () => parts.join(' | ') || 'Unknown source',
+      })
+    },
+  },
+  {
+    title: 'Contribution',
+    key: 'contribution',
+    width: 160,
+    render: (row) => {
+      const total = row.bm25_contribution + row.vector_contribution
+      const bm25Pct = total > 0 ? (row.bm25_contribution / total) * 100 : 0
+      return h('div', { style: 'display:flex;align-items:center;gap:4px;font-size:11px' }, [
+        h('span', { style: 'color:#f0a020;width:28px' }, `${bm25Pct.toFixed(0)}%`),
+        h('div', { style: 'flex:1;height:8px;background:#333;border-radius:4px;overflow:hidden;display:flex' }, [
+          h('div', { style: `width:${bm25Pct}%;background:#f0a020;height:100%` }),
+          h('div', { style: `width:${100 - bm25Pct}%;background:#18a058;height:100%` }),
+        ]),
+        h('span', { style: 'color:#18a058;width:28px;text-align:right' }, `${(100 - bm25Pct).toFixed(0)}%`),
+      ])
+    },
+  },
+  {
+    title: 'Agent',
+    key: 'agent',
+    width: 90,
+    render: (row) => row.entry.agent_id,
+  },
+  {
+    title: 'Content',
+    key: 'content',
+    ellipsis: { tooltip: true },
+    render: (row) => row.entry.content_text ?? '-',
+  },
+  {
+    title: 'Scope',
+    key: 'scope',
+    width: 80,
+    render: (row) => row.entry.scope,
+  },
 ]
 
 async function refresh() {
@@ -64,7 +126,7 @@ async function handleSearch() {
     searchResult.value = await semanticSearch(
       searchQuery.value,
       selectedAgent.value,
-      5,
+      10,
       true,
     )
   } finally {
@@ -93,7 +155,7 @@ watch([selectedAgent, selectedLayer], refresh, { immediate: true })
     </NSpace>
 
     <!-- Semantic Search -->
-    <NCard title="Semantic Search" size="small">
+    <NCard title="Hybrid Search" size="small">
       <NSpace :size="12">
         <NInput
           v-model:value="searchQuery"
@@ -111,25 +173,70 @@ watch([selectedAgent, selectedLayer], refresh, { immediate: true })
         >
           Search
         </NButton>
-        <NTag v-if="searchResult" type="success" size="small">
-          {{ searchResult.results.length }} results in {{ searchResult.latency_ms }}ms
-        </NTag>
       </NSpace>
 
-      <div v-if="searchResult && searchResult.results.length > 0" style="margin-top: 12px">
+      <!-- Pipeline Stats -->
+      <div v-if="searchResult" style="margin-top: 16px">
+        <!-- Stage Timeline -->
+        <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: stretch">
+          <NCard size="small" style="flex: 1; text-align: center">
+            <div style="color: #999; font-size: 11px">Encode</div>
+            <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ searchResult.latency.encode_ms }}ms</div>
+          </NCard>
+          <div style="display: flex; align-items: center; color: #555">&rarr;</div>
+          <NCard size="small" style="flex: 1; text-align: center">
+            <div style="color: #999; font-size: 11px">Recall</div>
+            <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ searchResult.latency.recall_ms }}ms</div>
+            <div style="color: #666; font-size: 11px">{{ searchResult.pipeline.recall_count }} hits</div>
+          </NCard>
+          <div style="display: flex; align-items: center; color: #555">&rarr;</div>
+          <NCard size="small" style="flex: 1; text-align: center">
+            <div style="color: #999; font-size: 11px">Rerank</div>
+            <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ searchResult.latency.rerank_ms }}ms</div>
+            <div style="color: #666; font-size: 11px">{{ searchResult.pipeline.rerank_count }} kept</div>
+          </NCard>
+          <div style="display: flex; align-items: center; color: #555">&rarr;</div>
+          <NCard size="small" style="flex: 1; text-align: center">
+            <div style="color: #999; font-size: 11px">Diffusion</div>
+            <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ searchResult.latency.diffusion_ms }}ms</div>
+            <div style="color: #666; font-size: 11px">+{{ searchResult.pipeline.diffusion_count }} found</div>
+          </NCard>
+          <div style="display: flex; align-items: center; color: #555">&rarr;</div>
+          <NCard size="small" style="flex: 1; text-align: center; border-color: #18a058">
+            <div style="color: #18a058; font-size: 11px">Total</div>
+            <div style="color: #18a058; font-size: 16px; font-weight: bold">{{ searchResult.latency.total_ms }}ms</div>
+            <div style="color: #666; font-size: 11px">{{ searchResult.pipeline.final_count }} results</div>
+          </NCard>
+        </div>
+
+        <!-- Source Distribution -->
+        <div style="display: flex; gap: 16px; margin-bottom: 12px">
+          <NTag type="success" size="small" round>
+            BM25+Vec: {{ searchResult.pipeline.both }}
+          </NTag>
+          <NTag type="warning" size="small" round>
+            BM25 only: {{ searchResult.pipeline.bm25_only }}
+          </NTag>
+          <NTag type="info" size="small" round>
+            Vec only: {{ searchResult.pipeline.vector_only }}
+          </NTag>
+          <NTag v-if="searchResult.pipeline.diffusion_count > 0" size="small" round>
+            Diffusion: {{ searchResult.pipeline.diffusion_count }}
+          </NTag>
+        </div>
+
+        <!-- Results Table -->
         <NDataTable
+          v-if="searchResult.results.length > 0"
           :columns="searchColumns"
           :data="searchResult.results"
-          :row-key="(row: any) => row.entry.id"
-          :max-height="300"
+          :row-key="(row: SearchHit) => row.entry.id"
+          :max-height="400"
           striped
           size="small"
         />
+        <NEmpty v-else description="No matching memories found." />
       </div>
-      <NEmpty v-else-if="searchResult && searchResult.results.length === 0"
-        description="No matching memories found."
-        style="margin-top: 12px"
-      />
     </NCard>
 
     <!-- Memory Table -->

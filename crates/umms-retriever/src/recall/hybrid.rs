@@ -16,6 +16,30 @@ use umms_core::types::{AgentId, ScoredMemory, ScoreSource};
 
 use super::bm25::Bm25Index;
 
+/// Per-hit source tracking for visualization.
+#[derive(Debug, Clone)]
+pub struct HitSourceInfo {
+    pub bm25_rank: Option<usize>,
+    pub vector_rank: Option<usize>,
+    pub bm25_contribution: f32,
+    pub vector_contribution: f32,
+}
+
+/// Hybrid recall result with source tracking.
+#[derive(Debug, Clone)]
+pub struct HybridHit {
+    pub memory: ScoredMemory,
+    pub source_info: HitSourceInfo,
+}
+
+/// Hybrid recall result.
+pub struct HybridResult {
+    pub hits: Vec<HybridHit>,
+    pub bm25_only: usize,
+    pub vector_only: usize,
+    pub both: usize,
+}
+
 /// Hybrid recall combining BM25 and vector search.
 pub struct HybridRecall {
     bm25: Arc<Bm25Index>,
@@ -35,13 +59,15 @@ impl HybridRecall {
     }
 
     /// Execute hybrid recall: BM25 ∪ Vector → RRF fusion → top-k.
+    ///
+    /// Returns `HybridResult` with per-hit source tracking for visualization.
     #[instrument(skip(self), fields(query, agent = %agent_id))]
     pub async fn recall(
         &self,
         query: &str,
         agent_id: &AgentId,
         query_vector: &[f32],
-    ) -> Result<Vec<ScoredMemory>> {
+    ) -> Result<HybridResult> {
         let top_k = self.config.top_k_recall;
         let bm25_weight = self.config.bm25_weight;
         let vector_weight = 1.0 - bm25_weight;
@@ -54,23 +80,38 @@ impl HybridRecall {
             .search(agent_id, query_vector, top_k, true)
             .await?;
 
-        // 3. Reciprocal Rank Fusion
-        //
-        // RRF score = sum_over_lists( weight / (k + rank) )
-        // where k=60 is a constant that prevents top-ranked items from
-        // dominating too heavily.
+        // 3. Reciprocal Rank Fusion with source tracking
         const RRF_K: f32 = 60.0;
 
-        // Map: memory_id → (rrf_score, Option<ScoredMemory>)
-        let mut fused: HashMap<String, (f32, Option<ScoredMemory>)> = HashMap::new();
+        struct FusionEntry {
+            rrf_score: f32,
+            memory: Option<ScoredMemory>,
+            bm25_rank: Option<usize>,
+            vector_rank: Option<usize>,
+            bm25_contribution: f32,
+            vector_contribution: f32,
+        }
+
+        let mut fused: HashMap<String, FusionEntry> = HashMap::new();
 
         // BM25 contributions
         for (rank, (id, _bm25_score)) in bm25_results.iter().enumerate() {
             let rrf = bm25_weight / (RRF_K + rank as f32 + 1.0);
             fused
                 .entry(id.clone())
-                .and_modify(|(score, _)| *score += rrf)
-                .or_insert((rrf, None));
+                .and_modify(|e| {
+                    e.rrf_score += rrf;
+                    e.bm25_rank = Some(rank + 1);
+                    e.bm25_contribution = rrf;
+                })
+                .or_insert(FusionEntry {
+                    rrf_score: rrf,
+                    memory: None,
+                    bm25_rank: Some(rank + 1),
+                    vector_rank: None,
+                    bm25_contribution: rrf,
+                    vector_contribution: 0.0,
+                });
         }
 
         // Vector contributions
@@ -79,48 +120,79 @@ impl HybridRecall {
             let id = sm.entry.id.as_str().to_owned();
             fused
                 .entry(id)
-                .and_modify(|(score, entry)| {
-                    *score += rrf;
-                    if entry.is_none() {
-                        *entry = Some(sm.clone());
+                .and_modify(|e| {
+                    e.rrf_score += rrf;
+                    e.vector_rank = Some(rank + 1);
+                    e.vector_contribution = rrf;
+                    if e.memory.is_none() {
+                        e.memory = Some(sm.clone());
                     }
                 })
-                .or_insert((rrf, Some(sm.clone())));
+                .or_insert(FusionEntry {
+                    rrf_score: rrf,
+                    memory: Some(sm.clone()),
+                    bm25_rank: None,
+                    vector_rank: Some(rank + 1),
+                    bm25_contribution: 0.0,
+                    vector_contribution: rrf,
+                });
         }
 
         // 4. Sort by fused score descending, take top_k
-        let mut ranked: Vec<(String, f32, Option<ScoredMemory>)> = fused
-            .into_iter()
-            .map(|(id, (score, sm))| (id, score, sm))
-            .collect();
-        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let mut ranked: Vec<(String, FusionEntry)> = fused.into_iter().collect();
+        ranked.sort_by(|a, b| {
+            b.1.rrf_score
+                .partial_cmp(&a.1.rrf_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         ranked.truncate(top_k);
 
-        // 5. Build final results — for entries that came from BM25 only,
-        //    we need to fetch the full MemoryEntry from the vector store.
-        let mut results = Vec::with_capacity(ranked.len());
-        for (id, score, maybe_sm) in ranked {
-            if let Some(mut sm) = maybe_sm {
-                sm.score = score;
+        // 5. Count source distribution
+        let mut bm25_only = 0usize;
+        let mut vector_only = 0usize;
+        let mut both = 0usize;
+
+        // 6. Build final results
+        let mut hits = Vec::with_capacity(ranked.len());
+        for (id, entry) in ranked {
+            // Track source distribution
+            match (entry.bm25_rank, entry.vector_rank) {
+                (Some(_), Some(_)) => both += 1,
+                (Some(_), None) => bm25_only += 1,
+                (None, Some(_)) => vector_only += 1,
+                (None, None) => {} // shouldn't happen
+            }
+
+            let source_info = HitSourceInfo {
+                bm25_rank: entry.bm25_rank,
+                vector_rank: entry.vector_rank,
+                bm25_contribution: entry.bm25_contribution,
+                vector_contribution: entry.vector_contribution,
+            };
+
+            if let Some(mut sm) = entry.memory {
+                sm.score = entry.rrf_score;
                 sm.source = ScoreSource::Hybrid;
-                results.push(sm);
+                hits.push(HybridHit { memory: sm, source_info });
             } else {
-                // Entry found by BM25 but not by vector search —
-                // fetch from store. If it's gone, skip silently.
+                // BM25-only hit: fetch full entry from vector store
                 let Ok(mid) = umms_core::types::MemoryId::from_str(&id) else {
                     continue;
                 };
-                if let Ok(Some(entry)) = self.vector.get(&mid).await {
-                    results.push(ScoredMemory {
-                        entry,
-                        score,
-                        source: ScoreSource::Hybrid,
+                if let Ok(Some(mem)) = self.vector.get(&mid).await {
+                    hits.push(HybridHit {
+                        memory: ScoredMemory {
+                            entry: mem,
+                            score: entry.rrf_score,
+                            source: ScoreSource::Hybrid,
+                        },
+                        source_info,
                     });
                 }
             }
         }
 
-        Ok(results)
+        Ok(HybridResult { hits, bm25_only, vector_only, both })
     }
 }
 

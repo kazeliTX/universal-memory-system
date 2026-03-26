@@ -206,10 +206,34 @@ export interface EncodeResponse {
 export interface SemanticSearchResponse {
   query: string
   results: SearchHit[]
-  latency_ms: number
+  latency: PipelineLatency
+  pipeline: PipelineStats
 }
 
 export interface SearchHit {
   entry: MemoryEntry
   score: number
+  source: 'both' | 'bm25_only' | 'vector_only' | 'diffusion' | 'unknown'
+  bm25_rank: number | null
+  vector_rank: number | null
+  bm25_contribution: number
+  vector_contribution: number
+}
+
+export interface PipelineLatency {
+  encode_ms: number
+  recall_ms: number
+  rerank_ms: number
+  diffusion_ms: number
+  total_ms: number
+}
+
+export interface PipelineStats {
+  recall_count: number
+  rerank_count: number
+  diffusion_count: number
+  final_count: number
+  bm25_only: number
+  vector_only: number
+  both: number
 }

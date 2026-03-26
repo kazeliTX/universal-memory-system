@@ -188,20 +188,61 @@ pub struct EncoderStatusResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Semantic search
+// Semantic search — full pipeline visualization
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
 pub struct SemanticSearchResponse {
     pub query: String,
     pub results: Vec<SearchHit>,
-    pub latency_ms: u64,
+    /// Per-stage latency breakdown.
+    pub latency: PipelineLatency,
+    /// Pipeline stage statistics.
+    pub pipeline: PipelineStats,
 }
 
 #[derive(Debug, Serialize)]
 pub struct SearchHit {
     pub entry: MemoryEntry,
+    /// Final fused score after all stages.
     pub score: f32,
+    /// How this entry was discovered.
+    pub source: String,
+    /// Rank in BM25 results (None if not found by BM25).
+    pub bm25_rank: Option<usize>,
+    /// Rank in vector results (None if not found by vector search).
+    pub vector_rank: Option<usize>,
+    /// RRF contribution from BM25 side.
+    pub bm25_contribution: f32,
+    /// RRF contribution from vector side.
+    pub vector_contribution: f32,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct PipelineLatency {
+    pub encode_ms: u64,
+    pub recall_ms: u64,
+    pub rerank_ms: u64,
+    pub diffusion_ms: u64,
+    pub total_ms: u64,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct PipelineStats {
+    /// Candidates from hybrid recall (before rerank).
+    pub recall_count: usize,
+    /// Candidates after rerank.
+    pub rerank_count: usize,
+    /// Entries discovered by graph diffusion.
+    pub diffusion_count: usize,
+    /// Final result count.
+    pub final_count: usize,
+    /// BM25-only hits (not in vector results).
+    pub bm25_only: usize,
+    /// Vector-only hits (not in BM25 results).
+    pub vector_only: usize,
+    /// Both BM25 and vector hits.
+    pub both: usize,
 }
 
 // ---------------------------------------------------------------------------

@@ -39,7 +39,7 @@ top_k_rerank = 20
 top_k_final = 10
 lif_hops = 2
 lif_max_nodes = 100
-min_score = 0.0
+min_score = 0.55
 auto_escalate = true
 escalation_threshold = 3
 

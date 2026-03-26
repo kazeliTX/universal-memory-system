@@ -252,21 +252,48 @@ impl Default for StorageConfig {
 ///
 /// Priority: env vars > umms.toml > defaults.
 pub fn load_config() -> UmmsConfig {
-    let builder = config::Config::builder()
-        .add_source(
+    // Search for umms.toml: CWD first, then walk up to find project root.
+    let config_path = find_config_file("umms.toml");
+
+    let mut builder = config::Config::builder();
+
+    if let Some(path) = &config_path {
+        builder = builder.add_source(
+            config::File::from(path.as_path())
+                .format(config::FileFormat::Toml)
+                .required(false),
+        );
+    } else {
+        builder = builder.add_source(
             config::File::with_name("umms")
                 .format(config::FileFormat::Toml)
                 .required(false),
-        )
-        .add_source(
-            config::Environment::with_prefix("UMMS")
-                .separator("__")
-                .try_parsing(true),
         );
+    }
+
+    builder = builder.add_source(
+        config::Environment::with_prefix("UMMS")
+            .separator("__")
+            .try_parsing(true),
+    );
 
     match builder.build() {
         Ok(cfg) => cfg.try_deserialize().unwrap_or_default(),
         Err(_) => UmmsConfig::default(),
+    }
+}
+
+/// Walk up from CWD to find a config file (handles Tauri launching from src-tauri/).
+fn find_config_file(filename: &str) -> Option<std::path::PathBuf> {
+    let mut dir = std::env::current_dir().ok()?;
+    loop {
+        let candidate = dir.join(filename);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        if !dir.pop() {
+            return None;
+        }
     }
 }
 
