@@ -70,17 +70,34 @@ pub trait VectorStore: Send + Sync {
     /// Get a single entry by ID.
     async fn get(&self, id: &MemoryId) -> Result<Option<MemoryEntry>>;
 
-    /// Update metadata fields (importance, tags, access_count, etc.)
+    /// Update metadata fields (importance, tags, scope, agent_id, etc.)
     async fn update_metadata(
         &self,
         id: &MemoryId,
         importance: Option<f32>,
         tags: Option<Vec<String>>,
         scope: Option<IsolationScope>,
+        agent_id: Option<AgentId>,
     ) -> Result<()>;
 
     /// Count entries for an agent (optionally including shared).
     async fn count(&self, agent_id: &AgentId, include_shared: bool) -> Result<u64>;
+
+    /// List entries for an agent with pagination.
+    /// Returns entries ordered by created_at descending (newest first).
+    async fn list(
+        &self,
+        agent_id: &AgentId,
+        offset: u64,
+        limit: u64,
+        include_shared: bool,
+    ) -> Result<Vec<MemoryEntry>>;
+
+    /// Delete all entries for an agent. If `include_shared` is true, also
+    /// deletes entries with `scope = Shared`.
+    ///
+    /// Returns the number of entries deleted.
+    async fn delete_all(&self, agent_id: &AgentId, include_shared: bool) -> Result<u64>;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +210,12 @@ pub trait KnowledgeGraphStore: Send + Sync {
 
     /// Count nodes and edges for an agent (for observability metrics).
     async fn stats(&self, agent_id: Option<&AgentId>) -> Result<GraphStats>;
+
+    /// Delete all nodes and edges. If `agent_id` is `Some`, only deletes that
+    /// agent's data. If `None`, deletes everything (including shared).
+    ///
+    /// Returns (nodes_deleted, edges_deleted).
+    async fn clear(&self, agent_id: Option<&AgentId>) -> Result<(u64, u64)>;
 }
 
 // ---------------------------------------------------------------------------
@@ -218,6 +241,9 @@ pub trait RawFileStore: Send + Sync {
 
     /// Check if a file exists.
     async fn exists(&self, path: &str) -> Result<bool>;
+
+    /// List all files stored for an agent. Returns relative paths.
+    async fn list(&self, agent_id: &AgentId) -> Result<Vec<String>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,3 +281,83 @@ pub trait AgentContextManager: Send + Sync {
 }
 
 use serde::{Serialize, Deserialize};
+
+// ---------------------------------------------------------------------------
+// Encoder (M2)
+// ---------------------------------------------------------------------------
+
+/// Text-to-vector encoding service.
+///
+/// The sole contract between the encoding layer and the rest of the system.
+/// Upper layers call `encode_text` / `encode_batch` and receive vectors.
+/// They never know (or care) whether the implementation calls Gemini, OpenAI,
+/// or a local ONNX model.
+///
+/// Invariant: every vector returned has exactly `dimension()` elements.
+#[async_trait]
+pub trait Encoder: Send + Sync {
+    /// Encode a single text into a vector.
+    async fn encode_text(&self, text: &str) -> Result<Vec<f32>>;
+
+    /// Encode a batch of texts. More efficient than calling `encode_text` in a loop
+    /// because it batches API calls.
+    ///
+    /// Returns vectors in the same order as the input texts.
+    async fn encode_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>>;
+
+    /// The dimensionality of vectors produced by this encoder.
+    /// Used by the storage layer to validate and configure indices.
+    fn dimension(&self) -> usize;
+
+    /// Human-readable name of the backend (e.g. "gemini-embedding-001").
+    fn model_name(&self) -> &str;
+}
+
+// ---------------------------------------------------------------------------
+// Retriever (M3)
+// ---------------------------------------------------------------------------
+
+/// Result of a retrieval query, including diffusion-discovered entries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetrievalResult {
+    /// Final ranked results (after recall → rerank → diffusion merge).
+    pub entries: Vec<ScoredMemory>,
+    /// Entries discovered via LIF graph diffusion (subset that were not
+    /// found by direct vector/BM25 search).
+    pub diffusion_entries: Vec<ScoredMemory>,
+    /// Time spent in each stage.
+    pub latency: RetrievalLatency,
+}
+
+/// Per-stage latency breakdown.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RetrievalLatency {
+    pub encode_ms: u64,
+    pub recall_ms: u64,
+    pub rerank_ms: u64,
+    pub diffusion_ms: u64,
+    pub total_ms: u64,
+}
+
+/// Full retrieval pipeline: encode → recall → rerank → diffuse.
+///
+/// The pipeline auto-escalates search depth (ADR-012):
+/// L1 cache → L2 vector+BM25 → L3 graph diffusion → archived scan.
+/// Each stage only runs if the previous stage returned insufficient results.
+#[async_trait]
+pub trait Retriever: Send + Sync {
+    /// Execute the full retrieval pipeline.
+    async fn retrieve(
+        &self,
+        query: &str,
+        agent_id: &AgentId,
+    ) -> Result<RetrievalResult>;
+
+    /// Recall only (skip rerank and diffusion). Useful for testing.
+    async fn recall_only(
+        &self,
+        query: &str,
+        agent_id: &AgentId,
+        top_k: usize,
+    ) -> Result<Vec<ScoredMemory>>;
+}

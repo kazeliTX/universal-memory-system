@@ -321,7 +321,7 @@ async fn full_memory_lifecycle() {
     assert_eq!(results[0].entry.content_text.as_deref(), Some("Async Rust patterns for high concurrency"));
 
     // 3. Update importance
-    vec_store.update_metadata(&mem_id, Some(0.9), None, None).await.unwrap();
+    vec_store.update_metadata(&mem_id, Some(0.9), None, None, None).await.unwrap();
     let updated = vec_store.get(&mem_id).await.unwrap().unwrap();
     assert!((updated.importance - 0.9).abs() < 0.01, "Importance updated to 0.9");
 

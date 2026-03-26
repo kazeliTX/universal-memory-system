@@ -50,7 +50,34 @@ impl LanceVectorStore {
             .map_err(lance_err)?;
 
         let table = match db.open_table("memories").execute().await {
-            Ok(t) => t,
+            Ok(t) => {
+                // Validate dimension matches. If the existing table was created
+                // with a different dimension, drop it and recreate.
+                let existing_schema = t.schema().await.map_err(lance_err)?;
+                let dim_matches = existing_schema
+                    .field_with_name("vector")
+                    .ok()
+                    .and_then(|f| match f.data_type() {
+                        DataType::FixedSizeList(_, size) => Some(*size as usize == vector_dim),
+                        _ => None,
+                    })
+                    .unwrap_or(false);
+
+                if dim_matches {
+                    t
+                } else {
+                    tracing::warn!(
+                        expected = vector_dim,
+                        "Vector dimension mismatch — dropping and recreating table"
+                    );
+                    let _ = db.drop_table("memories", &[]).await;
+                    let batch = empty_batch(&schema, vector_dim)?;
+                    db.create_table("memories", vec![batch])
+                        .execute()
+                        .await
+                        .map_err(lance_err)?
+                }
+            }
             Err(_) => {
                 // Table doesn't exist yet — create with an empty batch.
                 let batch = empty_batch(&schema, vector_dim)?;
@@ -195,6 +222,7 @@ impl VectorStore for LanceVectorStore {
         importance: Option<f32>,
         tags: Option<Vec<String>>,
         scope: Option<IsolationScope>,
+        agent_id: Option<AgentId>,
     ) -> Result<()> {
         let table = self.table.lock().await;
         let filter = format!("id = '{}'", id.as_str());
@@ -234,6 +262,16 @@ impl VectorStore for LanceVectorStore {
                 .map_err(lance_err)?;
         }
 
+        if let Some(aid) = agent_id {
+            table
+                .update()
+                .only_if(&filter)
+                .column("agent_id", format!("'{}'", aid.as_str()))
+                .execute()
+                .await
+                .map_err(lance_err)?;
+        }
+
         Ok(())
     }
 
@@ -262,6 +300,77 @@ impl VectorStore for LanceVectorStore {
             .map_err(lance_err)?;
         let total: usize = batches.iter().map(RecordBatch::num_rows).sum();
         Ok(total as u64)
+    }
+
+    #[instrument(skip(self), fields(agent = %agent_id, offset, limit, include_shared))]
+    async fn list(
+        &self,
+        agent_id: &AgentId,
+        offset: u64,
+        limit: u64,
+        include_shared: bool,
+    ) -> Result<Vec<MemoryEntry>> {
+        let filter = if include_shared {
+            format!(
+                "(agent_id = '{}' OR scope = 'shared')",
+                agent_id.as_str()
+            )
+        } else {
+            format!("agent_id = '{}'", agent_id.as_str())
+        };
+
+        let table = self.table.lock().await;
+        let results = table
+            .query()
+            .only_if(filter)
+            .execute()
+            .await
+            .map_err(lance_err)?;
+
+        let batches: Vec<RecordBatch> = results
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(lance_err)?;
+
+        let mut all_entries = Vec::new();
+        for batch in &batches {
+            let entries = batch_to_entries(batch, self.vector_dim)?;
+            all_entries.extend(entries);
+        }
+
+        // Sort by created_at descending (newest first)
+        all_entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        // Apply offset/limit
+        let start = (offset as usize).min(all_entries.len());
+        let end = (start + limit as usize).min(all_entries.len());
+        Ok(all_entries[start..end].to_vec())
+    }
+
+    #[instrument(skip(self), fields(agent = %agent_id, include_shared))]
+    async fn delete_all(&self, agent_id: &AgentId, include_shared: bool) -> Result<u64> {
+        let count = self.count(agent_id, include_shared).await?;
+        if count == 0 {
+            return Ok(0);
+        }
+
+        let filter = if include_shared {
+            format!(
+                "(agent_id = '{}' OR scope = 'shared')",
+                agent_id.as_str()
+            )
+        } else {
+            format!("agent_id = '{}'", agent_id.as_str())
+        };
+
+        let table = self.table.lock().await;
+        table
+            .delete(&filter)
+            .await
+            .map_err(lance_err)?;
+
+        tracing::info!(agent_id = %agent_id, deleted = count, "deleted vector entries");
+        Ok(count)
     }
 }
 
@@ -763,7 +872,7 @@ mod tests {
         store.insert(&entry).await.unwrap();
 
         store
-            .update_metadata(&id, Some(0.95), None, None)
+            .update_metadata(&id, Some(0.95), None, None, None)
             .await
             .unwrap();
 

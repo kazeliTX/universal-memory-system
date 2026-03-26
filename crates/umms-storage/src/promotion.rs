@@ -72,13 +72,6 @@ pub async fn promote(
             }));
         }
         IsolationScope::Private => {} // proceed
-        _ => {
-            return Err(UmmsError::Storage(StorageError::WriteFailed {
-                memory_id: memory_id.clone(),
-                agent_id: entry.agent_id.clone(),
-                reason: "Unknown scope".into(),
-            }));
-        }
     }
 
     // Strip agent-specific tags if requested
@@ -96,7 +89,7 @@ pub async fn promote(
     };
 
     store
-        .update_metadata(memory_id, None, new_tags, Some(IsolationScope::Shared))
+        .update_metadata(memory_id, None, new_tags, Some(IsolationScope::Shared), None)
         .await?;
 
     info!(
@@ -134,7 +127,13 @@ pub async fn demote(
     }
 
     store
-        .update_metadata(memory_id, None, None, Some(IsolationScope::Private))
+        .update_metadata(
+            memory_id,
+            None,
+            None,
+            Some(IsolationScope::Private),
+            Some(target_agent_id.clone()),
+        )
         .await?;
 
     info!(
