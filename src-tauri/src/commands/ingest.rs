@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tauri::State;
 
-use umms_api::response::{IngestLatencyResponse, IngestResponse};
+use umms_api::response::{ChunkDetailResponse, IngestLatencyResponse, IngestResponse};
 use umms_api::AppState;
 use umms_core::types::{AgentId, IsolationScope};
 use umms_retriever::ingest::chunker::ChunkerConfig;
@@ -45,10 +45,25 @@ pub async fn ingest_document(
         .await
         .map_err(|e| format!("Ingestion failed: {e}"))?;
 
+    let chunks: Vec<ChunkDetailResponse> = result
+        .chunk_details
+        .iter()
+        .map(|cd| ChunkDetailResponse {
+            index: cd.index,
+            original_text: cd.original_text.clone(),
+            context_prefix: cd.context_prefix.clone(),
+            section: cd.section.clone(),
+            tags: cd.tags.clone(),
+            memory_id: cd.memory_id.clone(),
+            char_count: cd.char_count,
+        })
+        .collect();
+
     Ok(IngestResponse {
         chunks_created: result.chunks_created,
         chunks_stored: result.chunks_stored,
-        title: result.skeleton.title,
+        title: result.skeleton.title.clone(),
+        summary: result.skeleton.summary.clone(),
         total_ms: result.total_ms,
         latency: IngestLatencyResponse {
             chunk_ms: result.latency.chunk_ms,
@@ -56,5 +71,6 @@ pub async fn ingest_document(
             encode_ms: result.latency.encode_ms,
             store_ms: result.latency.store_ms,
         },
+        chunks,
     })
 }

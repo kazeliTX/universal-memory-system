@@ -2,8 +2,8 @@
 import { ref } from 'vue'
 import {
   NCard, NSpace, NSelect, NRadioGroup, NRadioButton,
-  NInput, NButton, NTag, NAlert, NSpin,
-  NStatistic, NGrid, NGi,
+  NInput, NButton, NTag, NAlert,
+  NStatistic, NGrid, NGi, NCollapse, NCollapseItem,
 } from 'naive-ui'
 import { ingestDocument } from '@/api/client'
 import type { IngestResponse } from '@/types'
@@ -54,9 +54,6 @@ function clearAll() {
   <NSpace vertical :size="16">
     <NSpace align="center" :size="16">
       <h2 style="margin: 0; color: #e6edf3">Document Ingest</h2>
-      <NTag type="info" size="small">
-        Paste text below to chunk, encode, and store as memories
-      </NTag>
     </NSpace>
 
     <!-- Config -->
@@ -95,7 +92,7 @@ function clearAll() {
       <NInput
         v-model:value="documentText"
         type="textarea"
-        placeholder="Paste your document text here...&#10;&#10;The text will be automatically chunked, contextualized, encoded via Gemini, and stored in the memory system."
+        placeholder="Paste your document text here..."
         :rows="12"
         :disabled="ingesting"
       />
@@ -121,67 +118,130 @@ function clearAll() {
     </NAlert>
 
     <!-- Result -->
-    <NCard v-if="result" title="Ingestion Result" size="small">
-      <NGrid :cols="5" :x-gap="12">
-        <NGi>
-          <NStatistic label="Chunks Created" :value="result.chunks_created" />
-        </NGi>
-        <NGi>
-          <NStatistic label="Chunks Stored" :value="result.chunks_stored" />
-        </NGi>
-        <NGi>
-          <NStatistic label="Total Time">
-            <template #default>
-              {{ result.total_ms }}
-              <span style="font-size: 12px; color: #999">ms</span>
-            </template>
-          </NStatistic>
-        </NGi>
-        <NGi>
-          <NStatistic label="Encode Time">
-            <template #default>
-              {{ result.latency.encode_ms }}
-              <span style="font-size: 12px; color: #999">ms</span>
-            </template>
-          </NStatistic>
-        </NGi>
-        <NGi>
-          <NStatistic label="Store Time">
-            <template #default>
-              {{ result.latency.store_ms }}
-              <span style="font-size: 12px; color: #999">ms</span>
-            </template>
-          </NStatistic>
-        </NGi>
-      </NGrid>
+    <template v-if="result">
+      <!-- Stats -->
+      <NCard title="Ingestion Result" size="small">
+        <NGrid :cols="5" :x-gap="12">
+          <NGi><NStatistic label="Chunks Created" :value="result.chunks_created" /></NGi>
+          <NGi><NStatistic label="Chunks Stored" :value="result.chunks_stored" /></NGi>
+          <NGi>
+            <NStatistic label="Total Time">
+              <template #default>{{ result.total_ms }}<span style="font-size:12px;color:#999">ms</span></template>
+            </NStatistic>
+          </NGi>
+          <NGi>
+            <NStatistic label="Encode Time">
+              <template #default>{{ result.latency.encode_ms }}<span style="font-size:12px;color:#999">ms</span></template>
+            </NStatistic>
+          </NGi>
+          <NGi>
+            <NStatistic label="Store Time">
+              <template #default>{{ result.latency.store_ms }}<span style="font-size:12px;color:#999">ms</span></template>
+            </NStatistic>
+          </NGi>
+        </NGrid>
 
-      <div style="margin-top: 12px">
-        <NTag type="success" size="small">Title: {{ result.title }}</NTag>
-      </div>
+        <!-- Pipeline Breakdown -->
+        <div style="display: flex; gap: 8px; margin-top: 16px; align-items: stretch">
+          <NCard size="small" style="flex: 1; text-align: center">
+            <div style="color: #999; font-size: 11px">Chunk</div>
+            <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ result.latency.chunk_ms }}ms</div>
+          </NCard>
+          <div style="display: flex; align-items: center; color: #555">&rarr;</div>
+          <NCard size="small" style="flex: 1; text-align: center">
+            <div style="color: #999; font-size: 11px">Skeleton</div>
+            <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ result.latency.skeleton_ms }}ms</div>
+          </NCard>
+          <div style="display: flex; align-items: center; color: #555">&rarr;</div>
+          <NCard size="small" style="flex: 1; text-align: center">
+            <div style="color: #999; font-size: 11px">Encode</div>
+            <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ result.latency.encode_ms }}ms</div>
+          </NCard>
+          <div style="display: flex; align-items: center; color: #555">&rarr;</div>
+          <NCard size="small" style="flex: 1; text-align: center; border-color: #18a058">
+            <div style="color: #18a058; font-size: 11px">Store</div>
+            <div style="color: #18a058; font-size: 16px; font-weight: bold">{{ result.latency.store_ms }}ms</div>
+            <div style="color: #666; font-size: 11px">{{ result.chunks_stored }} entries</div>
+          </NCard>
+        </div>
+      </NCard>
 
-      <!-- Pipeline Breakdown -->
-      <div style="display: flex; gap: 8px; margin-top: 16px; align-items: stretch">
-        <NCard size="small" style="flex: 1; text-align: center">
-          <div style="color: #999; font-size: 11px">Chunk</div>
-          <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ result.latency.chunk_ms }}ms</div>
-        </NCard>
-        <div style="display: flex; align-items: center; color: #555">&rarr;</div>
-        <NCard size="small" style="flex: 1; text-align: center">
-          <div style="color: #999; font-size: 11px">Skeleton</div>
-          <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ result.latency.skeleton_ms }}ms</div>
-        </NCard>
-        <div style="display: flex; align-items: center; color: #555">&rarr;</div>
-        <NCard size="small" style="flex: 1; text-align: center">
-          <div style="color: #999; font-size: 11px">Encode</div>
-          <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ result.latency.encode_ms }}ms</div>
-        </NCard>
-        <div style="display: flex; align-items: center; color: #555">&rarr;</div>
-        <NCard size="small" style="flex: 1; text-align: center; border-color: #18a058">
-          <div style="color: #18a058; font-size: 11px">Store</div>
-          <div style="color: #18a058; font-size: 16px; font-weight: bold">{{ result.latency.store_ms }}ms</div>
-          <div style="color: #666; font-size: 11px">{{ result.chunks_stored }} entries</div>
-        </NCard>
-      </div>
-    </NCard>
+      <!-- Document Skeleton -->
+      <NCard title="Document Skeleton" size="small">
+        <NSpace :size="8" vertical>
+          <div>
+            <NTag type="primary" size="small">Title</NTag>
+            <span style="color: #e6edf3; margin-left: 8px">{{ result.title }}</span>
+          </div>
+          <div>
+            <NTag type="info" size="small">Summary</NTag>
+            <span style="color: #ccc; margin-left: 8px; font-size: 13px">{{ result.summary }}</span>
+          </div>
+        </NSpace>
+      </NCard>
+
+      <!-- Chunk Details -->
+      <NCard title="Chunk Visualization" size="small">
+        <div style="color: #999; font-size: 12px; margin-bottom: 8px">
+          {{ result.chunks.length }} chunks | Click to expand context details
+        </div>
+        <NCollapse>
+          <NCollapseItem
+            v-for="chunk in result.chunks"
+            :key="chunk.index"
+            :title="`Chunk ${chunk.index} — ${chunk.section} (${chunk.char_count} chars)`"
+            :name="chunk.index"
+          >
+            <template #header-extra>
+              <NTag size="tiny" type="default" style="margin-right: 4px">
+                {{ chunk.memory_id.slice(0, 8) }}...
+              </NTag>
+            </template>
+
+            <!-- Context prefix -->
+            <div style="margin-bottom: 8px">
+              <div style="color: #f0a020; font-size: 11px; font-weight: bold; margin-bottom: 4px">
+                Context Prefix (injected)
+              </div>
+              <div style="
+                background: #1a1a2e;
+                border-left: 3px solid #f0a020;
+                padding: 8px 12px;
+                font-size: 12px;
+                color: #f0a020;
+                font-family: monospace;
+                white-space: pre-wrap;
+                word-break: break-all;
+              ">{{ chunk.context_prefix }}</div>
+            </div>
+
+            <!-- Original text -->
+            <div style="margin-bottom: 8px">
+              <div style="color: #18a058; font-size: 11px; font-weight: bold; margin-bottom: 4px">
+                Original Text
+              </div>
+              <div style="
+                background: #0d1117;
+                border-left: 3px solid #18a058;
+                padding: 8px 12px;
+                font-size: 13px;
+                color: #e6edf3;
+                white-space: pre-wrap;
+                word-break: break-all;
+                max-height: 200px;
+                overflow-y: auto;
+              ">{{ chunk.original_text }}</div>
+            </div>
+
+            <!-- Tags -->
+            <NSpace :size="4">
+              <NTag v-for="tag in chunk.tags" :key="tag" size="tiny" type="default">
+                {{ tag }}
+              </NTag>
+            </NSpace>
+          </NCollapseItem>
+        </NCollapse>
+      </NCard>
+    </template>
   </NSpace>
 </template>

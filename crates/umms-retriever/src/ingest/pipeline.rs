@@ -29,6 +29,27 @@ pub struct IngestResult {
     pub total_ms: u64,
     /// Per-stage latency.
     pub latency: IngestLatency,
+    /// Chunk details for visualization.
+    pub chunk_details: Vec<ChunkDetail>,
+}
+
+/// Detail of a single chunk for dashboard visualization.
+#[derive(Debug, Clone)]
+pub struct ChunkDetail {
+    /// Chunk index in the document.
+    pub index: usize,
+    /// Original chunk text (before context injection).
+    pub original_text: String,
+    /// Context prefix injected from skeleton.
+    pub context_prefix: String,
+    /// Section this chunk belongs to.
+    pub section: String,
+    /// Tags assigned to this chunk.
+    pub tags: Vec<String>,
+    /// Memory ID of the stored entry.
+    pub memory_id: String,
+    /// Character count of original text.
+    pub char_count: usize,
 }
 
 /// Per-stage latency for the ingestion pipeline.
@@ -93,6 +114,7 @@ impl IngestPipeline {
                 skeleton: DocSkeleton::fallback(text, 0),
                 total_ms: total_start.elapsed().as_millis() as u64,
                 latency,
+                chunk_details: Vec::new(),
             });
         }
 
@@ -125,15 +147,21 @@ impl IngestPipeline {
         // Stage 4: Build MemoryEntries and store
         let store_start = std::time::Instant::now();
         let mut entries = Vec::with_capacity(chunks.len());
+        let mut chunk_details = Vec::with_capacity(chunks.len());
 
         for (i, (chunk, vector)) in chunks.iter().zip(vectors.into_iter()).enumerate() {
             let mut chunk_tags = tags.clone();
             chunk_tags.push(format!("chunk:{i}"));
             chunk_tags.push(format!("doc:{}", skel.title));
 
-            if let Some(section) = skel.section_for(i) {
-                chunk_tags.push(format!("section:{}", section.title));
-            }
+            let section_name = skel
+                .section_for(i)
+                .map(|s| s.title.clone())
+                .unwrap_or_else(|| "General".to_owned());
+
+            chunk_tags.push(format!("section:{section_name}"));
+
+            let context_prefix = skel.contextualize(i, "").trim_end().to_owned();
 
             let entry = MemoryEntryBuilder::new(agent_id.clone(), Modality::Text)
                 .layer(MemoryLayer::EpisodicMemory)
@@ -141,8 +169,18 @@ impl IngestPipeline {
                 .content_text(&chunk.text)
                 .vector(vector)
                 .importance(0.5)
-                .tags(chunk_tags)
+                .tags(chunk_tags.clone())
                 .build();
+
+            chunk_details.push(ChunkDetail {
+                index: i,
+                original_text: chunk.text.clone(),
+                context_prefix,
+                section: section_name,
+                tags: chunk_tags,
+                memory_id: entry.id.as_str().to_owned(),
+                char_count: chunk.text.len(),
+            });
 
             entries.push(entry);
         }
@@ -169,6 +207,7 @@ impl IngestPipeline {
             skeleton: skel,
             total_ms: total_start.elapsed().as_millis() as u64,
             latency,
+            chunk_details,
         })
     }
 }

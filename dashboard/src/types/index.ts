@@ -207,6 +207,7 @@ export interface IngestResponse {
   chunks_created: number
   chunks_stored: number
   title: string
+  summary: string
   total_ms: number
   latency: {
     chunk_ms: number
@@ -214,6 +215,17 @@ export interface IngestResponse {
     encode_ms: number
     store_ms: number
   }
+  chunks: ChunkDetail[]
+}
+
+export interface ChunkDetail {
+  index: number
+  original_text: string
+  context_prefix: string
+  section: string
+  tags: string[]
+  memory_id: string
+  char_count: number
 }
 
 export interface SemanticSearchResponse {

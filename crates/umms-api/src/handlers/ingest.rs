@@ -13,7 +13,7 @@ use umms_retriever::ingest::pipeline::IngestPipeline;
 use umms_retriever::ingest::skeleton::DocSkeleton;
 
 use crate::AppState;
-use crate::response::{IngestResponse, IngestLatencyResponse};
+use crate::response::{ChunkDetailResponse, IngestLatencyResponse, IngestResponse};
 
 /// POST /api/ingest — ingest a document into the memory system.
 pub async fn ingest_document(
@@ -70,10 +70,25 @@ pub async fn ingest_document(
             })),
     );
 
+    let chunks: Vec<ChunkDetailResponse> = result
+        .chunk_details
+        .iter()
+        .map(|cd| ChunkDetailResponse {
+            index: cd.index,
+            original_text: cd.original_text.clone(),
+            context_prefix: cd.context_prefix.clone(),
+            section: cd.section.clone(),
+            tags: cd.tags.clone(),
+            memory_id: cd.memory_id.clone(),
+            char_count: cd.char_count,
+        })
+        .collect();
+
     Ok(Json(IngestResponse {
         chunks_created: result.chunks_created,
         chunks_stored: result.chunks_stored,
-        title: result.skeleton.title,
+        title: result.skeleton.title.clone(),
+        summary: result.skeleton.summary.clone(),
         total_ms: result.total_ms,
         latency: IngestLatencyResponse {
             chunk_ms: result.latency.chunk_ms,
@@ -81,6 +96,7 @@ pub async fn ingest_document(
             encode_ms: result.latency.encode_ms,
             store_ms: result.latency.store_ms,
         },
+        chunks,
     }))
 }
 

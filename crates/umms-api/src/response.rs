@@ -254,8 +254,10 @@ pub struct IngestResponse {
     pub chunks_created: usize,
     pub chunks_stored: usize,
     pub title: String,
+    pub summary: String,
     pub total_ms: u64,
     pub latency: IngestLatencyResponse,
+    pub chunks: Vec<ChunkDetailResponse>,
 }
 
 #[derive(Debug, Serialize)]
@@ -264,6 +266,17 @@ pub struct IngestLatencyResponse {
     pub skeleton_ms: u64,
     pub encode_ms: u64,
     pub store_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChunkDetailResponse {
+    pub index: usize,
+    pub original_text: String,
+    pub context_prefix: String,
+    pub section: String,
+    pub tags: Vec<String>,
+    pub memory_id: String,
+    pub char_count: usize,
 }
 
 // ---------------------------------------------------------------------------
