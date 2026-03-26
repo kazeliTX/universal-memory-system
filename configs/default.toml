@@ -23,7 +23,7 @@ l1_tti_secs = 300
 [encoder]
 provider = "gemini"         # "gemini" | "local" | "auto"
 gemini_api_key_env = "GEMINI_API_KEY"
-embedding_model = "text-embedding-004"
+embedding_model = "gemini-embedding-001"
 embedding_dim = 3072
 fallback_enabled = true
 local_model_path = "~/.umms/models/"

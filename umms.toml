@@ -26,8 +26,8 @@
 
 [encoder]
 provider = "gemini"
-model = "text-embedding-004"
-dimension = 768
+model = "gemini-embedding-001"
+dimension = 3072
 timeout_ms = 5000
 max_retries = 2
 api_key_env = "GEMINI_API_KEY"

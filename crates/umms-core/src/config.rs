@@ -199,8 +199,8 @@ impl Default for EncoderConfig {
     fn default() -> Self {
         Self {
             provider: "gemini".to_owned(),
-            model: "text-embedding-004".to_owned(),
-            dimension: 768,
+            model: "gemini-embedding-001".to_owned(),
+            dimension: 3072,
             timeout_ms: 5000,
             max_retries: 2,
             api_key_env: "GEMINI_API_KEY".to_owned(),
@@ -297,7 +297,7 @@ mod tests {
         assert!((cfg.promotion.min_importance - 0.7).abs() < f32::EPSILON);
         assert!(!cfg.decay.enabled);
         assert!(!cfg.decay.delete_originals);
-        assert_eq!(cfg.encoder.dimension, 768);
+        assert_eq!(cfg.encoder.dimension, 3072);
         assert!((cfg.retriever.bm25_weight - 0.3).abs() < f32::EPSILON);
         assert_eq!(cfg.retriever.top_k_recall, 200);
         assert_eq!(cfg.retriever.lif_hops, 2);
