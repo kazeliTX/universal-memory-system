@@ -1,0 +1,40 @@
+[package]
+name = "umms-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "UMMS Desktop Application — Personal Memory System"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Tauri
+tauri = { version = "2", features = [] }
+
+# Internal crates
+umms-api.workspace = true
+umms-core.workspace = true
+umms-storage.workspace = true
+umms-observe.workspace = true
+
+# Async
+tokio.workspace = true
+
+# HTTP (for embedded Axum server)
+axum.workspace = true
+
+# Serialization (required for Tauri Commands)
+serde.workspace = true
+serde_json.workspace = true
+
+# Tracing
+tracing.workspace = true
+
+# Env
+dotenvy = "0.15"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
