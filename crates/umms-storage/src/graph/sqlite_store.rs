@@ -873,6 +873,46 @@ impl KnowledgeGraphStore for SqliteGraphStore {
         .await
         .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
     }
+
+    async fn clear(&self, agent_id: Option<&AgentId>) -> umms_core::error::Result<(u64, u64)> {
+        let agent_id = agent_id.cloned();
+        let conn = Arc::clone(&self.conn);
+
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.blocking_lock();
+
+            let (edge_sql, node_sql) = match &agent_id {
+                Some(aid) => (
+                    format!("DELETE FROM kg_edges WHERE agent_id = '{}'", aid.as_str()),
+                    format!("DELETE FROM kg_nodes WHERE agent_id = '{}'", aid.as_str()),
+                ),
+                None => (
+                    "DELETE FROM kg_edges".to_owned(),
+                    "DELETE FROM kg_nodes".to_owned(),
+                ),
+            };
+
+            // Edges first (foreign key constraint)
+            let edges_deleted = conn
+                .execute(&edge_sql, [])
+                .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+
+            let nodes_deleted = conn
+                .execute(&node_sql, [])
+                .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+
+            tracing::info!(
+                agent_id = ?agent_id.as_ref().map(|a| a.as_str()),
+                nodes_deleted,
+                edges_deleted,
+                "graph cleared"
+            );
+
+            Ok((nodes_deleted as u64, edges_deleted as u64))
+        })
+        .await
+        .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
+    }
 }
 
 // ---------------------------------------------------------------------------

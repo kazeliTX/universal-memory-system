@@ -97,6 +97,28 @@ impl RawFileStore for LocalFileStore {
         let abs = self.resolve(path);
         Ok(abs.exists())
     }
+
+    #[instrument(skip(self), fields(agent_id = %agent_id))]
+    async fn list(&self, agent_id: &AgentId) -> Result<Vec<String>, UmmsError> {
+        let agent_dir = self.base_dir.join(agent_id.as_str());
+        if !agent_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut entries = Vec::new();
+        let mut reader = fs::read_dir(&agent_dir)
+            .await
+            .map_err(StorageError::Io)?;
+
+        while let Some(entry) = reader.next_entry().await.map_err(StorageError::Io)? {
+            if let Some(name) = entry.file_name().to_str() {
+                entries.push(format!("{}/{}", agent_id.as_str(), name));
+            }
+        }
+
+        entries.sort();
+        Ok(entries)
+    }
 }
 
 #[cfg(test)]
