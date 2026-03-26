@@ -247,6 +247,64 @@ pub trait RawFileStore: Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
+// Tag store
+// ---------------------------------------------------------------------------
+
+/// Storage for semantic tags with embeddings and co-occurrence tracking.
+///
+/// Tags are first-class entities in their own index, separate from memories.
+/// The implementation uses LanceDB for vector search over tag embeddings
+/// and SQLite for co-occurrence statistics and metadata.
+///
+/// EPA and query reshaping depend on this trait to access the tag space.
+#[async_trait]
+pub trait TagStore: Send + Sync {
+    /// Upsert a tag. If a tag with the same canonical label + agent scope
+    /// already exists, updates its frequency and vector (running average).
+    /// Returns the tag's ID (existing or newly created).
+    async fn upsert(&self, tag: &Tag) -> Result<TagId>;
+
+    /// Batch upsert tags (used during document ingestion).
+    async fn upsert_batch(&self, tags: &[Tag]) -> Result<Vec<TagId>>;
+
+    /// Search tags by vector similarity. Returns top-k most similar tags.
+    /// If `agent_id` is `Some`, includes that agent's private tags + shared tags.
+    async fn search_by_vector(
+        &self,
+        vector: &[f32],
+        agent_id: Option<&AgentId>,
+        top_k: usize,
+    ) -> Result<Vec<TagMatch>>;
+
+    /// Find tags by label prefix/substring (for autocomplete and dedup checks).
+    async fn find_by_label(
+        &self,
+        query: &str,
+        agent_id: Option<&AgentId>,
+        limit: usize,
+    ) -> Result<Vec<Tag>>;
+
+    /// Record that a set of tags co-occurred on the same memory entry.
+    /// Updates the co-occurrence counts and PMI values incrementally.
+    async fn record_cooccurrence(&self, tag_ids: &[TagId]) -> Result<()>;
+
+    /// Get co-occurring tags for a given tag, ordered by PMI descending.
+    async fn cooccurrences(&self, tag_id: &TagId, limit: usize) -> Result<Vec<TagCooccurrence>>;
+
+    /// Get all tags for an agent (including shared). Used by EPA for clustering.
+    async fn all_tags(&self, agent_id: Option<&AgentId>) -> Result<Vec<Tag>>;
+
+    /// Get a single tag by ID.
+    async fn get(&self, id: &TagId) -> Result<Option<Tag>>;
+
+    /// Get multiple tags by ID.
+    async fn get_batch(&self, ids: &[TagId]) -> Result<Vec<Tag>>;
+
+    /// Count tags for an agent (including shared if agent_id is Some).
+    async fn count(&self, agent_id: Option<&AgentId>) -> Result<u64>;
+}
+
+// ---------------------------------------------------------------------------
 // Agent context management
 // ---------------------------------------------------------------------------
 
@@ -333,6 +391,8 @@ pub struct RetrievalResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RetrievalLatency {
     pub encode_ms: u64,
+    pub epa_ms: u64,
+    pub reshape_ms: u64,
     pub recall_ms: u64,
     pub rerank_ms: u64,
     pub diffusion_ms: u64,

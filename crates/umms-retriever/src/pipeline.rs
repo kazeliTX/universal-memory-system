@@ -10,15 +10,19 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::instrument;
 
-use umms_core::config::RetrieverConfig;
+use umms_core::config::{EpaConfig, ReshapingConfig, RetrieverConfig};
 use umms_core::error::Result;
+use umms_core::tag::EpaResult;
 use umms_core::traits::{
-    Encoder, KnowledgeGraphStore, Retriever, RetrievalLatency, RetrievalResult, VectorStore,
+    Encoder, KnowledgeGraphStore, Retriever, RetrievalLatency, RetrievalResult, TagStore,
+    VectorStore,
 };
 use umms_core::types::{AgentId, ScoredMemory, ScoreSource};
 
+use crate::epa::EpaAnalyzer;
 use crate::recall::bm25::Bm25Index;
 use crate::recall::hybrid::{HitSourceInfo, HybridHit, HybridRecall};
+use crate::reshaping::QueryReshaper;
 
 /// Extended result with per-hit source tracking for dashboard visualization.
 #[derive(Debug)]
@@ -33,6 +37,8 @@ pub struct PipelineResult {
     pub recall_count: usize,
     pub rerank_count: usize,
     pub diffusion_count: usize,
+    /// EPA analysis result (None if EPA is disabled or no tags available).
+    pub epa_result: Option<EpaResult>,
 }
 
 /// The full retrieval pipeline.
@@ -41,6 +47,8 @@ pub struct RetrievalPipeline {
     vector: Arc<dyn VectorStore>,
     encoder: Arc<dyn Encoder>,
     graph: Arc<dyn KnowledgeGraphStore>,
+    epa: Option<EpaAnalyzer>,
+    reshaper: Option<QueryReshaper>,
     config: RetrieverConfig,
 }
 
@@ -58,7 +66,38 @@ impl RetrievalPipeline {
             Arc::clone(&encoder),
             config.clone(),
         );
-        Self { hybrid, vector, encoder, graph, config }
+        Self {
+            hybrid,
+            vector,
+            encoder,
+            graph,
+            epa: None,
+            reshaper: None,
+            config,
+        }
+    }
+
+    /// Attach EPA and query reshaping to the pipeline.
+    /// Call this after construction if a TagStore is available.
+    pub fn with_epa(
+        mut self,
+        tag_store: Arc<dyn TagStore>,
+        epa_config: EpaConfig,
+        reshaping_config: ReshapingConfig,
+    ) -> Self {
+        if epa_config.enabled {
+            self.epa = Some(EpaAnalyzer::new(
+                Arc::clone(&tag_store),
+                epa_config,
+            ));
+        }
+        if reshaping_config.enabled {
+            self.reshaper = Some(QueryReshaper::new(
+                tag_store,
+                reshaping_config,
+            ));
+        }
+        self
     }
 
     /// Stage 2: Rerank using cosine similarity re-scoring.
@@ -104,9 +143,49 @@ impl RetrievalPipeline {
         let query_vector = self.encoder.encode_text(query).await?;
         latency.encode_ms = encode_start.elapsed().as_millis() as u64;
 
-        // Stage 1: Hybrid recall
+        // Stage 0.5: EPA analyze (if enabled)
+        let epa_result = if let Some(ref epa) = self.epa {
+            let epa_start = std::time::Instant::now();
+            match epa.analyze(&query_vector, agent_id).await {
+                Ok(result) => {
+                    latency.epa_ms = epa_start.elapsed().as_millis() as u64;
+                    Some(result)
+                }
+                Err(e) => {
+                    tracing::warn!("EPA analysis failed, using passthrough: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Stage 0.6: Query reshape (if enabled + EPA produced results)
+        let effective_vector = if let (Some(reshaper), Some(epa)) =
+            (&self.reshaper, &epa_result)
+        {
+            if epa.alpha > 1e-6 && !epa.activated_tags.is_empty() {
+                let reshape_start = std::time::Instant::now();
+                match reshaper.reshape(&query_vector, epa, agent_id).await {
+                    Ok(reshaped) => {
+                        latency.reshape_ms = reshape_start.elapsed().as_millis() as u64;
+                        reshaped
+                    }
+                    Err(e) => {
+                        tracing::warn!("Query reshaping failed, using original: {e}");
+                        query_vector.clone()
+                    }
+                }
+            } else {
+                query_vector.clone()
+            }
+        } else {
+            query_vector.clone()
+        };
+
+        // Stage 1: Hybrid recall (using reshaped vector if available)
         let recall_start = std::time::Instant::now();
-        let mut hybrid_result = self.hybrid.recall(query, agent_id, &query_vector).await?;
+        let mut hybrid_result = self.hybrid.recall(query, agent_id, &effective_vector).await?;
         latency.recall_ms = recall_start.elapsed().as_millis() as u64;
     
         let bm25_only = hybrid_result.bm25_only;
@@ -117,7 +196,7 @@ impl RetrievalPipeline {
 
         // Stage 2: Rerank (cosine similarity re-scoring)
         let rerank_start = std::time::Instant::now();
-        let mut reranked = self.rerank(hybrid_result.hits, &query_vector);
+        let mut reranked = self.rerank(hybrid_result.hits, &effective_vector);
         latency.rerank_ms = rerank_start.elapsed().as_millis() as u64;
 
         // Filter by min_score AFTER rerank — scores are now cosine similarity (0-1 range)
@@ -163,6 +242,7 @@ impl RetrievalPipeline {
             recall_count,
             rerank_count,
             diffusion_count,
+            epa_result,
         })
     }
 

@@ -19,6 +19,9 @@ pub struct UmmsConfig {
     pub encoder: EncoderConfig,
     pub retriever: RetrieverConfig,
     pub storage: StorageConfig,
+    pub tag: TagConfig,
+    pub epa: EpaConfig,
+    pub reshaping: ReshapingConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +235,118 @@ impl Default for StorageConfig {
             graph_db: "graph.sqlite".to_owned(),
             context_db: "context.sqlite".to_owned(),
             files_dir: "files".to_owned(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tag system
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct TagConfig {
+    /// Whether the tag system is active.
+    pub enabled: bool,
+    /// Whether to auto-extract tags during document ingestion.
+    pub auto_extract: bool,
+    /// LanceDB directory for tag vectors (relative to data_dir).
+    pub vector_dir: String,
+    /// SQLite database for co-occurrence matrix (relative to data_dir).
+    pub cooc_db: String,
+}
+
+impl Default for TagConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            auto_extract: true,
+            vector_dir: "tag_vectors".to_owned(),
+            cooc_db: "tag_cooc.sqlite".to_owned(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EPA (Embedding Projection Analysis)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct EpaConfig {
+    /// Whether EPA is active.
+    pub enabled: bool,
+    /// Number of nearest tags to consider for activation.
+    pub activation_top_k: usize,
+    /// Minimum cosine similarity for a tag to be "activated".
+    pub activation_threshold: f32,
+    /// Number of K-Means clusters.
+    pub num_clusters: usize,
+    /// K-Means max iterations.
+    pub kmeans_iterations: usize,
+    /// Minimum cluster weight fraction to count as "significant".
+    pub cluster_significance_threshold: f32,
+    /// Number of PCA semantic axes to extract.
+    pub num_axes: usize,
+    /// Power iteration count for PCA.
+    pub pca_iterations: usize,
+    /// Alpha blending parameters.
+    pub alpha_base: f32,
+    pub alpha_depth_weight: f32,
+    pub alpha_resonance_weight: f32,
+    pub alpha_importance_weight: f32,
+    pub alpha_min: f32,
+    pub alpha_max: f32,
+}
+
+impl Default for EpaConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            activation_top_k: 50,
+            activation_threshold: 0.3,
+            num_clusters: 5,
+            kmeans_iterations: 30,
+            cluster_significance_threshold: 0.1,
+            num_axes: 3,
+            pca_iterations: 50,
+            alpha_base: 0.05,
+            alpha_depth_weight: 0.15,
+            alpha_resonance_weight: 0.10,
+            alpha_importance_weight: 0.10,
+            alpha_min: 0.05,
+            alpha_max: 0.40,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Query reshaping
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ReshapingConfig {
+    /// Whether query reshaping is active.
+    pub enabled: bool,
+    /// Residual pyramid: number of tags at level 0 (fine, highest weight).
+    pub level0_count: usize,
+    /// Number of tags at level 1 (medium weight).
+    pub level1_count: usize,
+    /// Number of co-occurring tags to expand at level 2.
+    pub cooc_expansion_k: usize,
+    /// Pyramid level weights [level0, level1, level2]. Should sum to 1.0.
+    pub pyramid_weights: [f32; 3],
+}
+
+impl Default for ReshapingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            level0_count: 5,
+            level1_count: 15,
+            cooc_expansion_k: 10,
+            pyramid_weights: [0.6, 0.3, 0.1],
         }
     }
 }

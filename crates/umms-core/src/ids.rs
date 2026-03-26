@@ -85,6 +85,12 @@ define_id!(
     EdgeId
 );
 
+define_id!(
+    /// Unique identifier for a semantic tag.
+    /// Tags are first-class entities with their own embeddings, not just string labels.
+    TagId
+);
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;

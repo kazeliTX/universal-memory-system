@@ -20,5 +20,6 @@ tracing.workspace = true
 tantivy.workspace = true
 
 [dev-dependencies]
+chrono.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 uuid.workspace = true

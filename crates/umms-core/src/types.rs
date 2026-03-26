@@ -11,3 +11,4 @@ pub use std::str::FromStr;
 pub use crate::enums::*;
 pub use crate::ids::*;
 pub use crate::memory::*;
+pub use crate::tag::*;

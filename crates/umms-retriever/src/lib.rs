@@ -8,6 +8,8 @@
 //!
 //! Auto-escalates search depth per ADR-012.
 
+pub mod epa;
 pub mod ingest;
 pub mod pipeline;
 pub mod recall;
+pub mod reshaping;
