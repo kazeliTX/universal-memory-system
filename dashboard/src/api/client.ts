@@ -24,6 +24,10 @@ import type {
   EncoderStatusResponse,
   SemanticSearchResponse,
   IngestResponse,
+  TagListResponse,
+  TagSearchResponse,
+  CooccurrenceResponse,
+  EpaAnalyzeResponse,
 } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -236,6 +240,53 @@ export async function ingestDocument(
       scope,
       tags,
     }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------
+
+export async function listTags(agentId: string): Promise<TagListResponse> {
+  if (IS_TAURI) return tauriInvoke('list_tags', { agentId })
+  return httpGet(`/api/tags/${agentId}`)
+}
+
+export async function searchTags(
+  query: string,
+  agentId?: string,
+  topK = 10,
+): Promise<TagSearchResponse> {
+  if (IS_TAURI) return tauriInvoke('search_tags', { query, agentId, topK })
+  const res = await fetch('/api/tags/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, agent_id: agentId, top_k: topK }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+export async function getTagCooccurrences(tagId: string): Promise<CooccurrenceResponse> {
+  if (IS_TAURI) return tauriInvoke('tag_cooccurrences', { tagId })
+  return httpGet(`/api/tags/cooccurrences/${tagId}`)
+}
+
+// ---------------------------------------------------------------------------
+// EPA
+// ---------------------------------------------------------------------------
+
+export async function epaAnalyze(
+  query: string,
+  agentId?: string,
+): Promise<EpaAnalyzeResponse> {
+  if (IS_TAURI) return tauriInvoke('epa_analyze', { query, agentId })
+  const res = await fetch('/api/epa/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, agent_id: agentId }),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
   return res.json()

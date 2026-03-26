@@ -262,3 +262,59 @@ export interface PipelineStats {
   vector_only: number
   both: number
 }
+
+// ---------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------
+
+export interface TagResponse {
+  id: string
+  label: string
+  canonical: string
+  frequency: number
+  importance: number
+}
+
+export interface TagListResponse {
+  agent_id: string
+  tags: TagResponse[]
+  total: number
+}
+
+export interface TagMatchResponse {
+  tag: TagResponse
+  similarity: number
+}
+
+export interface TagSearchResponse {
+  results: TagMatchResponse[]
+}
+
+export interface CoocEntry {
+  partner_tag: TagResponse
+  count: number
+  pmi: number
+}
+
+export interface CooccurrenceResponse {
+  tag_id: string
+  cooccurrences: CoocEntry[]
+}
+
+// ---------------------------------------------------------------------------
+// EPA
+// ---------------------------------------------------------------------------
+
+export interface ActivatedTagResponse {
+  tag_id: string
+  label: string
+  similarity: number
+}
+
+export interface EpaAnalyzeResponse {
+  logic_depth: number
+  cross_domain_resonance: number
+  activated_tags: ActivatedTagResponse[]
+  alpha: number
+  num_semantic_axes: number
+}

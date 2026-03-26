@@ -6,8 +6,8 @@ import {
   NProgress, NTooltip, NStatistic, NGrid, NGi,
   type DataTableColumns,
 } from 'naive-ui'
-import { getCacheEntries, getVectorEntries, semanticSearch } from '@/api/client'
-import type { MemoryEntry, SemanticSearchResponse, SearchHit } from '@/types'
+import { getCacheEntries, getVectorEntries, semanticSearch, epaAnalyze } from '@/api/client'
+import type { MemoryEntry, SemanticSearchResponse, SearchHit, EpaAnalyzeResponse } from '@/types'
 
 const agents = ['coder', 'researcher', 'writer']
 const selectedAgent = ref('coder')
@@ -20,6 +20,7 @@ const totalCount = ref(0)
 const searchQuery = ref('')
 const searching = ref(false)
 const searchResult = ref<SemanticSearchResponse | null>(null)
+const epaResult = ref<EpaAnalyzeResponse | null>(null)
 
 const columns: DataTableColumns<MemoryEntry> = [
   { title: 'ID', key: 'id', width: 100, ellipsis: { tooltip: true }, render: (row) => row.id.slice(0, 8) + '\u2026' },
@@ -122,6 +123,7 @@ async function refresh() {
 async function handleSearch() {
   if (!searchQuery.value.trim()) return
   searching.value = true
+  epaResult.value = null
   try {
     searchResult.value = await semanticSearch(
       searchQuery.value,
@@ -129,6 +131,10 @@ async function handleSearch() {
       10,
       true,
     )
+    // Fire EPA analysis in parallel (non-blocking)
+    epaAnalyze(searchQuery.value, selectedAgent.value)
+      .then((res) => { epaResult.value = res })
+      .catch(() => { /* EPA unavailable, ignore */ })
   } finally {
     searching.value = false
   }
@@ -223,6 +229,39 @@ watch([selectedAgent, selectedLayer], refresh, { immediate: true })
           <NTag v-if="searchResult.pipeline.diffusion_count > 0" size="small" round>
             Diffusion: {{ searchResult.pipeline.diffusion_count }}
           </NTag>
+        </div>
+
+        <!-- EPA Metrics -->
+        <div v-if="epaResult" style="margin-bottom: 12px">
+          <div style="display: flex; gap: 8px; align-items: stretch">
+            <NCard size="small" style="flex: 1; text-align: center">
+              <div style="color: #999; font-size: 11px">Logic Depth</div>
+              <div style="color: #58a6ff; font-size: 16px; font-weight: bold">{{ epaResult.logic_depth.toFixed(3) }}</div>
+            </NCard>
+            <NCard size="small" style="flex: 1; text-align: center">
+              <div style="color: #999; font-size: 11px">Cross-Domain</div>
+              <div style="color: #d2a8ff; font-size: 16px; font-weight: bold">{{ epaResult.cross_domain_resonance.toFixed(3) }}</div>
+            </NCard>
+            <NCard size="small" style="flex: 1; text-align: center">
+              <div style="color: #999; font-size: 11px">Alpha</div>
+              <div style="color: #f0a020; font-size: 16px; font-weight: bold">{{ epaResult.alpha.toFixed(3) }}</div>
+            </NCard>
+            <NCard size="small" style="flex: 1; text-align: center">
+              <div style="color: #999; font-size: 11px">Axes</div>
+              <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ epaResult.num_semantic_axes }}</div>
+            </NCard>
+          </div>
+          <div v-if="epaResult.activated_tags.length > 0" style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap">
+            <NTag
+              v-for="at in epaResult.activated_tags.slice(0, 15)"
+              :key="at.tag_id"
+              size="small"
+              round
+              type="success"
+            >
+              {{ at.label }} ({{ at.similarity.toFixed(2) }})
+            </NTag>
+          </div>
         </div>
 
         <!-- Results Table -->

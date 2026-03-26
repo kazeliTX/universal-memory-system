@@ -15,6 +15,7 @@ use crate::recall::Bm25Index;
 
 use super::chunker::{ChunkerConfig, chunk_text};
 use super::skeleton::DocSkeleton;
+use super::tag_extractor::TagExtractor;
 
 /// Result of ingesting a document.
 #[derive(Debug)]
@@ -67,6 +68,7 @@ pub struct IngestPipeline {
     vector_store: Arc<dyn VectorStore>,
     bm25: Arc<Bm25Index>,
     chunker_config: ChunkerConfig,
+    tag_extractor: Option<Arc<TagExtractor>>,
 }
 
 impl IngestPipeline {
@@ -81,7 +83,14 @@ impl IngestPipeline {
             vector_store,
             bm25,
             chunker_config,
+            tag_extractor: None,
         }
+    }
+
+    /// Attach a tag extractor to the pipeline for automatic tag extraction.
+    pub fn with_tag_extractor(mut self, extractor: Arc<TagExtractor>) -> Self {
+        self.tag_extractor = Some(extractor);
+        self
     }
 
     /// Ingest a document: chunk → contextualize → encode → store.
@@ -125,6 +134,26 @@ impl IngestPipeline {
         let skel = skeleton.unwrap_or_else(|| DocSkeleton::fallback(text, chunks.len()));
         latency.skeleton_ms = skel_start.elapsed().as_millis() as u64;
 
+        // Stage 2.5: Tag extraction (if extractor is available)
+        let extracted_tags = if let Some(ref extractor) = self.tag_extractor {
+            match extractor.extract(&skel, &chunks, agent_id).await {
+                Ok(tag_ids) => {
+                    info!(
+                        chunks = tag_ids.len(),
+                        total_tags = tag_ids.iter().map(|t| t.len()).sum::<usize>(),
+                        "Tags extracted from document"
+                    );
+                    Some(tag_ids)
+                }
+                Err(e) => {
+                    warn!("Tag extraction failed (continuing without tags): {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         // Stage 3: Contextualize + Encode
         // Build contextualized texts for embedding
         let contextualized: Vec<String> = chunks
@@ -153,6 +182,15 @@ impl IngestPipeline {
             let mut chunk_tags = tags.clone();
             chunk_tags.push(format!("chunk:{i}"));
             chunk_tags.push(format!("doc:{}", skel.title));
+
+            // Add extracted tag IDs as tag strings
+            if let Some(ref tag_ids_per_chunk) = extracted_tags {
+                if let Some(chunk_tag_ids) = tag_ids_per_chunk.get(i) {
+                    for tag_id in chunk_tag_ids {
+                        chunk_tags.push(format!("tag:{}", tag_id.as_str()));
+                    }
+                }
+            }
 
             let section_name = skel
                 .section_for(i)

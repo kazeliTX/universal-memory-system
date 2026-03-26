@@ -10,3 +10,4 @@
 pub mod chunker;
 pub mod pipeline;
 pub mod skeleton;
+pub mod tag_extractor;

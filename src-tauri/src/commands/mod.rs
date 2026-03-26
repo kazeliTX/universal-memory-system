@@ -19,3 +19,4 @@ pub mod encoder;
 pub mod ingest;
 pub mod system;
 pub mod files;
+pub mod tags;

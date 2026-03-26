@@ -18,6 +18,7 @@ import {
   ListOutline,
   SpeedometerOutline,
   CloudUploadOutline,
+  PricetagsOutline,
 } from '@vicons/ionicons5'
 import { NIcon } from 'naive-ui'
 
@@ -52,6 +53,11 @@ const menuOptions: MenuOption[] = [
     label: () => h(RouterLink, { to: '/ingest' }, { default: () => 'Document Ingest' }),
     key: 'ingest',
     icon: renderIcon(CloudUploadOutline),
+  },
+  {
+    label: () => h(RouterLink, { to: '/tags' }, { default: () => 'Tag Explorer' }),
+    key: 'tags',
+    icon: renderIcon(PricetagsOutline),
   },
   {
     label: () => h(RouterLink, { to: '/benchmarks' }, { default: () => 'Benchmarks' }),

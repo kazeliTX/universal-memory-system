@@ -18,8 +18,8 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tantivy.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
-chrono.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 uuid.workspace = true

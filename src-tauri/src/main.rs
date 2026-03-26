@@ -80,6 +80,11 @@ async fn main() {
             commands::files::list_files,
             // Ingest
             commands::ingest::ingest_document,
+            // Tags & EPA
+            commands::tags::list_tags,
+            commands::tags::search_tags,
+            commands::tags::tag_cooccurrences,
+            commands::tags::epa_analyze,
         ])
         .run(tauri::generate_context!())
         .expect("error running UMMS desktop");

@@ -100,6 +100,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/benchmarks",
             get(handlers::benchmarks::benchmarks),
         )
+        // Tags
+        .route(
+            "/api/tags/{agent_id}",
+            get(handlers::tags::list_tags),
+        )
+        .route("/api/tags/search", post(handlers::tags::search_tags))
+        .route(
+            "/api/tags/cooccurrences/{tag_id}",
+            get(handlers::tags::tag_cooccurrences),
+        )
+        // EPA
+        .route("/api/epa/analyze", post(handlers::epa::epa_analyze))
         // Middleware
         .layer(CorsLayer::permissive())
         .with_state(state)

@@ -29,6 +29,11 @@ const router = createRouter({
       component: () => import('@/views/DocumentIngest.vue'),
     },
     {
+      path: '/tags',
+      name: 'tags',
+      component: () => import('@/views/TagExplorer.vue'),
+    },
+    {
       path: '/benchmarks',
       name: 'benchmarks',
       component: () => import('@/views/Benchmarks.vue'),

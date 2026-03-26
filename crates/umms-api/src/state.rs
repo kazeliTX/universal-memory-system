@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use umms_core::config;
 use umms_core::error::UmmsError;
-use umms_core::traits::Encoder;
+use umms_core::traits::{Encoder, TagStore};
 use umms_encoder::{GeminiConfig, GeminiEncoder};
 use umms_observe::AuditLog;
 use umms_retriever::pipeline::RetrievalPipeline;
@@ -17,6 +17,7 @@ use umms_retriever::recall::Bm25Index;
 use umms_storage::cache::MokaMemoryCache;
 use umms_storage::file::LocalFileStore;
 use umms_storage::graph::SqliteGraphStore;
+use umms_storage::tag::CompositeTagStore;
 use umms_storage::vector::LanceVectorStore;
 
 /// Configuration for initialising [`AppState`].
@@ -76,6 +77,8 @@ pub struct AppState {
     pub encoder: Option<Arc<GeminiEncoder>>,
     /// BM25 full-text index (always available).
     pub bm25: Arc<Bm25Index>,
+    /// Tag store is `None` when tag system is disabled.
+    pub tag_store: Option<Arc<dyn TagStore>>,
     /// Retrieval pipeline is `None` when encoder is unavailable.
     pub retriever: Option<RetrievalPipeline>,
     pub metrics_registry: prometheus_client::registry::Registry,
@@ -131,20 +134,57 @@ impl AppState {
             Bm25Index::new().map_err(|e| UmmsError::Internal(format!("BM25 init failed: {e}")))?,
         );
 
-        // Retrieval pipeline (requires encoder for query encoding)
+        // Tag store (initialise when tag system is enabled)
         let umms_config = config::load_config();
+        let tag_store: Option<Arc<dyn TagStore>> = if umms_config.tag.enabled {
+            let tag_lance_path = config.data_dir.join(&umms_config.tag.vector_dir);
+            let tag_cooc_path = config.data_dir.join(&umms_config.tag.cooc_db);
+            match CompositeTagStore::open(
+                tag_lance_path.to_str().ok_or_else(|| {
+                    UmmsError::Config("tag vector_dir contains non-UTF-8 characters".into())
+                })?,
+                tag_cooc_path.to_str().ok_or_else(|| {
+                    UmmsError::Config("tag cooc_db path contains non-UTF-8 characters".into())
+                })?,
+                config.vector_dim,
+            )
+            .await
+            {
+                Ok(store) => {
+                    tracing::info!("Tag store initialised");
+                    Some(Arc::new(store) as Arc<dyn TagStore>)
+                }
+                Err(e) => {
+                    tracing::warn!("Tag store init failed: {e}. Tags will be disabled.");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Retrieval pipeline (requires encoder for query encoding)
         let retriever = encoder.as_ref().map(|enc| {
             let enc_arc: Arc<dyn Encoder> = Arc::clone(enc) as Arc<dyn Encoder>;
             let vec_arc: Arc<dyn umms_core::traits::VectorStore> = Arc::clone(&vector) as _;
             let graph_arc: Arc<dyn umms_core::traits::KnowledgeGraphStore> =
                 Arc::clone(&graph) as _;
-            RetrievalPipeline::new(
+            let mut pipeline = RetrievalPipeline::new(
                 Arc::clone(&bm25),
                 vec_arc,
                 enc_arc,
                 graph_arc,
                 umms_config.retriever,
-            )
+            );
+            // Attach EPA if tag store is available
+            if let Some(ref ts) = tag_store {
+                pipeline = pipeline.with_epa(
+                    Arc::clone(ts),
+                    umms_config.epa,
+                    umms_config.reshaping,
+                );
+            }
+            pipeline
         });
 
         let metrics_registry = umms_observe::init_metrics();
@@ -157,6 +197,7 @@ impl AppState {
             audit,
             encoder,
             bm25,
+            tag_store,
             retriever,
             metrics_registry,
             started_at: Instant::now(),

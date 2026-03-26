@@ -280,6 +280,70 @@ pub struct ChunkDetailResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct TagListResponse {
+    pub agent_id: String,
+    pub tags: Vec<TagResponse>,
+    pub total: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TagResponse {
+    pub id: String,
+    pub label: String,
+    pub canonical: String,
+    pub frequency: u64,
+    pub importance: f32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TagSearchResponse {
+    pub results: Vec<TagMatchResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TagMatchResponse {
+    pub tag: TagResponse,
+    pub similarity: f32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CooccurrenceResponse {
+    pub tag_id: String,
+    pub cooccurrences: Vec<CoocEntry>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CoocEntry {
+    pub partner_tag: TagResponse,
+    pub count: u64,
+    pub pmi: f32,
+}
+
+// ---------------------------------------------------------------------------
+// EPA
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct EpaAnalyzeResponse {
+    pub logic_depth: f32,
+    pub cross_domain_resonance: f32,
+    pub activated_tags: Vec<ActivatedTagResponse>,
+    pub alpha: f32,
+    pub num_semantic_axes: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ActivatedTagResponse {
+    pub tag_id: String,
+    pub label: String,
+    pub similarity: f32,
+}
+
+// ---------------------------------------------------------------------------
 // Seed
 // ---------------------------------------------------------------------------
 
