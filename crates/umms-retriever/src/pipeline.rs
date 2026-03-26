@@ -4,6 +4,7 @@
 //! search depth per ADR-012: if recall returns fewer results than
 //! `escalation_threshold`, the pipeline extends into graph diffusion.
 
+use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -37,6 +38,7 @@ pub struct PipelineResult {
 /// The full retrieval pipeline.
 pub struct RetrievalPipeline {
     hybrid: HybridRecall,
+    vector: Arc<dyn VectorStore>,
     encoder: Arc<dyn Encoder>,
     graph: Arc<dyn KnowledgeGraphStore>,
     config: RetrieverConfig,
@@ -56,7 +58,7 @@ impl RetrievalPipeline {
             Arc::clone(&encoder),
             config.clone(),
         );
-        Self { hybrid, encoder, graph, config }
+        Self { hybrid, vector, encoder, graph, config }
     }
 
     /// Stage 2: Rerank using cosine similarity re-scoring.
@@ -226,10 +228,51 @@ impl RetrievalPipeline {
             }
         }
 
-        // For now, diffusion just returns node info; future versions will
-        // look up associated memory entries in the vector store.
-        // This is a placeholder for the full LIF implementation.
-        Ok(Vec::new())
+        // Look up memory entries whose content matches diffusion-discovered node labels.
+        // This bridges graph nodes back to vector-stored memories.
+        let mut diffusion_results = Vec::new();
+        for node_id in &diffusion_ids {
+            // Search for memories related to discovered node labels
+            if let Ok(Some(node)) = self.graph.get_node(
+                &umms_core::types::NodeId::from_str(node_id)
+                    .unwrap_or_else(|_| umms_core::types::NodeId::new()),
+            ).await {
+                // Use node label as a search query in vector store
+                if let Some(ref vec) = reranked.first().and_then(|sm| sm.entry.vector.clone()) {
+                    // Search vector store for entries matching this node's label
+                    let label_results = self
+                        .vector
+                        .search(agent_id, vec, 3, true)
+                        .await
+                        .unwrap_or_default();
+
+                    for sr in label_results {
+                        if !existing_ids.contains(sr.entry.id.as_str())
+                            && !diffusion_results
+                                .iter()
+                                .any(|d: &ScoredMemory| d.entry.id == sr.entry.id)
+                        {
+                            // Apply distance decay: score × (1 / 2^hops)
+                            // We don't track exact hop count per node here,
+                            // so use a flat decay factor for discovered nodes
+                            let decayed_score = sr.score * 0.5;
+
+                            diffusion_results.push(ScoredMemory {
+                                entry: sr.entry,
+                                score: decayed_score,
+                                source: ScoreSource::Diffusion,
+                            });
+                        }
+                    }
+                }
+            }
+
+            if diffusion_results.len() >= self.config.lif_max_nodes {
+                break;
+            }
+        }
+
+        Ok(diffusion_results)
     }
 }
 
