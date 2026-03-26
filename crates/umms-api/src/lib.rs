@@ -93,6 +93,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         // Semantic search
         .route("/api/search", post(handlers::encoder::semantic_search))
+        // Document ingestion
+        .route("/api/ingest", post(handlers::ingest::ingest_document))
         // Benchmarks
         .route(
             "/api/benchmarks",

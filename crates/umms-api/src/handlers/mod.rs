@@ -10,5 +10,6 @@ pub mod benchmarks;
 pub mod encoder;
 pub mod files;
 pub mod graph;
+pub mod ingest;
 pub mod memory;
 pub mod system;

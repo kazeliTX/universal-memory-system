@@ -16,5 +16,6 @@ pub mod graph;
 pub mod agent;
 pub mod audit;
 pub mod encoder;
+pub mod ingest;
 pub mod system;
 pub mod files;

@@ -24,6 +24,11 @@ const router = createRouter({
       component: () => import('@/views/AuditTrail.vue'),
     },
     {
+      path: '/ingest',
+      name: 'ingest',
+      component: () => import('@/views/DocumentIngest.vue'),
+    },
+    {
       path: '/benchmarks',
       name: 'benchmarks',
       component: () => import('@/views/Benchmarks.vue'),

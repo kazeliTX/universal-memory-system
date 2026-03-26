@@ -23,6 +23,7 @@ import type {
   SeedResponse,
   EncoderStatusResponse,
   SemanticSearchResponse,
+  IngestResponse,
 } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -211,6 +212,29 @@ export async function semanticSearch(
       agent_id: agentId,
       top_k: topK,
       include_shared: includeShared,
+    }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+export async function ingestDocument(
+  text: string,
+  agentId = 'coder',
+  scope = 'private',
+  tags: string[] = [],
+): Promise<IngestResponse> {
+  if (IS_TAURI) {
+    return tauriInvoke('ingest_document', { text, agentId, scope, tags })
+  }
+  const res = await fetch('/api/ingest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      agent_id: agentId,
+      scope,
+      tags,
     }),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)

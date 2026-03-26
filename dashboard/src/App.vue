@@ -17,6 +17,7 @@ import {
   GitNetworkOutline,
   ListOutline,
   SpeedometerOutline,
+  CloudUploadOutline,
 } from '@vicons/ionicons5'
 import { NIcon } from 'naive-ui'
 
@@ -46,6 +47,11 @@ const menuOptions: MenuOption[] = [
     label: () => h(RouterLink, { to: '/audit' }, { default: () => 'Audit Trail' }),
     key: 'audit',
     icon: renderIcon(ListOutline),
+  },
+  {
+    label: () => h(RouterLink, { to: '/ingest' }, { default: () => 'Document Ingest' }),
+    key: 'ingest',
+    icon: renderIcon(CloudUploadOutline),
   },
   {
     label: () => h(RouterLink, { to: '/benchmarks' }, { default: () => 'Benchmarks' }),

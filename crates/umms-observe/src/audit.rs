@@ -37,6 +37,7 @@ pub enum AuditEventType {
     FileStore,
     FileRead,
     Encode,
+    Ingest,
 }
 
 impl std::fmt::Display for AuditEventType {
@@ -58,6 +59,7 @@ impl std::fmt::Display for AuditEventType {
             Self::FileStore => write!(f, "file_store"),
             Self::FileRead => write!(f, "file_read"),
             Self::Encode => write!(f, "encode"),
+            Self::Ingest => write!(f, "ingest"),
         }
     }
 }

@@ -78,6 +78,8 @@ async fn main() {
             commands::encoder::semantic_search,
             // Files
             commands::files::list_files,
+            // Ingest
+            commands::ingest::ingest_document,
         ])
         .run(tauri::generate_context!())
         .expect("error running UMMS desktop");

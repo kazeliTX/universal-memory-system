@@ -203,6 +203,19 @@ export interface EncodeResponse {
   vector: number[]
 }
 
+export interface IngestResponse {
+  chunks_created: number
+  chunks_stored: number
+  title: string
+  total_ms: number
+  latency: {
+    chunk_ms: number
+    skeleton_ms: number
+    encode_ms: number
+    store_ms: number
+  }
+}
+
 export interface SemanticSearchResponse {
   query: string
   results: SearchHit[]

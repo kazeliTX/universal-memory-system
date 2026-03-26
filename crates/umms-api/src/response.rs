@@ -246,6 +246,27 @@ pub struct PipelineStats {
 }
 
 // ---------------------------------------------------------------------------
+// Document ingestion
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct IngestResponse {
+    pub chunks_created: usize,
+    pub chunks_stored: usize,
+    pub title: String,
+    pub total_ms: u64,
+    pub latency: IngestLatencyResponse,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IngestLatencyResponse {
+    pub chunk_ms: u64,
+    pub skeleton_ms: u64,
+    pub encode_ms: u64,
+    pub store_ms: u64,
+}
+
+// ---------------------------------------------------------------------------
 // Seed
 // ---------------------------------------------------------------------------
 
