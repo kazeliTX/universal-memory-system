@@ -11,7 +11,7 @@ members = [
     "crates/umms-api",
     "crates/umms-observe",
     "crates/umms-python",
-    "crates/umms-devserver",
+    "src-tauri",
     "tests/integration",
 ]
 

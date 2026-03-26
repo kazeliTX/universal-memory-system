@@ -1,0 +1,51 @@
+# UMMS Configuration
+# All values shown are defaults. Uncomment and modify to override.
+
+# [cache.l0]
+# max_capacity = 50
+# eviction = "fifo"
+# session_aware = false
+
+# [cache.l1]
+# max_capacity = 200
+# eviction = "lru"
+# session_aware = true
+
+# [promotion]
+# min_importance = 0.7
+# min_access_count = 3
+# min_age_hours = 24
+
+# [decay]
+# enabled = false
+# rate = 0.05
+# floor = 0.01
+# archive_threshold = 0.05
+# archive_after_days = 90
+# delete_originals = false
+
+[encoder]
+provider = "gemini"
+model = "text-embedding-004"
+dimension = 768
+timeout_ms = 5000
+max_retries = 2
+api_key_env = "GEMINI_API_KEY"
+
+[retriever]
+bm25_weight = 0.3
+top_k_recall = 200
+top_k_rerank = 20
+top_k_final = 10
+lif_hops = 2
+lif_max_nodes = 100
+min_score = 0.0
+auto_escalate = true
+escalation_threshold = 3
+
+# [storage]
+# data_dir = ".umms"
+# vector_dir = "vectors"
+# graph_db = "graph.sqlite"
+# context_db = "context.sqlite"
+# files_dir = "files"

@@ -16,6 +16,7 @@
 //! - `error` — Unified error hierarchy
 //! - `types` — Convenience re-export of ids + enums + memory
 
+pub mod config;
 pub mod enums;
 pub mod error;
 pub mod ids;
