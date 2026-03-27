@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use serde::Serialize;
 use tracing::{info, warn};
 
 use umms_core::config::ModelPoolConfig;
@@ -15,8 +16,36 @@ use umms_core::error::{EncodingError, Result, UmmsError};
 use umms_core::model::{ModelInfo, ModelProvider, ModelTask};
 use umms_core::traits::Encoder;
 
-use crate::gemini::EncoderStats;
 use crate::gemini_provider::GeminiProvider;
+use crate::stats::EncoderStats;
+
+// ---------------------------------------------------------------------------
+// Model activation status types
+// ---------------------------------------------------------------------------
+
+/// Status of a single model provider.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelStatus {
+    pub id: String,
+    pub provider: String,
+    pub model_name: String,
+    pub available: bool,
+    pub tasks: Vec<String>,
+    pub dimension: Option<usize>,
+    pub stats: Option<ModelStats>,
+}
+
+/// Point-in-time statistics for a model provider.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelStats {
+    pub total_requests: u64,
+    pub total_errors: u64,
+    pub avg_latency_ms: f64,
+}
+
+// ---------------------------------------------------------------------------
+// ModelPool
+// ---------------------------------------------------------------------------
 
 /// Centralized model pool that routes requests to the right provider.
 pub struct ModelPool {
@@ -115,6 +144,27 @@ impl ModelPool {
             .values()
             .map(|p| p.info())
             .collect()
+    }
+
+    /// Get activation status of all registered models (with statistics).
+    pub fn status(&self) -> Vec<ModelStatus> {
+        self.providers.values().map(|p| {
+            let info = p.info();
+            let snap = p.stats.snapshot();
+            ModelStatus {
+                id: info.id,
+                provider: info.provider,
+                model_name: info.model_name,
+                available: info.available,
+                tasks: info.tasks.iter().map(|t| t.to_string()).collect(),
+                dimension: info.dimension,
+                stats: Some(ModelStats {
+                    total_requests: snap.total_requests,
+                    total_errors: snap.total_errors,
+                    avg_latency_ms: snap.avg_latency_ms,
+                }),
+            }
+        }).collect()
     }
 
     /// Whether any providers are registered.
@@ -282,10 +332,8 @@ mod tests {
 
     #[test]
     fn pool_from_config_graceful_without_keys() {
-        // Without API keys, providers should be skipped gracefully
         let config = make_test_config();
         let pool = ModelPool::from_config(&config).unwrap();
-        // No providers should be available (no API keys)
         assert!(pool.is_empty());
         assert!(pool.models().is_empty());
     }
@@ -335,7 +383,6 @@ mod tests {
     fn encoder_trait_dimension_default() {
         let config = make_test_config();
         let pool = ModelPool::from_config(&config).unwrap();
-        // With no embedding provider, dimension falls back to 3072
         assert_eq!(pool.dimension(), 3072);
     }
 
@@ -344,5 +391,13 @@ mod tests {
         let config = make_test_config();
         let pool = ModelPool::from_config(&config).unwrap();
         assert_eq!(pool.model_name(), "model-pool");
+    }
+
+    #[test]
+    fn pool_status_empty() {
+        let config = make_test_config();
+        let pool = ModelPool::from_config(&config).unwrap();
+        let status = pool.status();
+        assert!(status.is_empty());
     }
 }

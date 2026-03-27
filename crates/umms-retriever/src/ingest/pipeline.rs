@@ -10,7 +10,7 @@ use tracing::{info, instrument, warn};
 use umms_core::error::Result;
 use umms_core::traits::{Encoder, KnowledgeGraphStore, VectorStore};
 use umms_core::types::{AgentId, IsolationScope, MemoryEntryBuilder, MemoryLayer, Modality};
-use umms_encoder::ModelPool;
+use umms_model::ModelPool;
 
 use crate::recall::Bm25Index;
 

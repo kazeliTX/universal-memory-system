@@ -11,7 +11,7 @@ use tracing::warn;
 
 use umms_consolidation::llm::{ExtractedEntity, ExtractedRelation, GenerativeLlm};
 use umms_core::error::Result;
-use umms_encoder::ModelPool;
+use umms_model::ModelPool;
 
 /// Prompt template for entity extraction.
 const ENTITY_EXTRACTION_PROMPT: &str = r#"Extract entities and their relationships from this text.

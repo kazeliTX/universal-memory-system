@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 use umms_core::error::Result;
-use umms_encoder::ModelPool;
+use umms_model::ModelPool;
 
 /// The structural skeleton of a document, extracted by a single LLM call.
 #[derive(Debug, Clone, Serialize, Deserialize)]

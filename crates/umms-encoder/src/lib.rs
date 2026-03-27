@@ -1,19 +1,19 @@
 
 //! # umms-encoder
 //!
-//! Encoding and model management service for UMMS.
+//! Encoding service for UMMS.
 //!
-//! Provides:
-//! - [`GeminiProvider`] — Gemini model provider supporting embedding + generation
-//! - [`ModelPool`] — Centralized registry routing requests to the right model
+//! The model management layer ([`ModelPool`], [`GeminiProvider`]) has moved to
+//! the `umms-model` crate. This crate re-exports them for backwards
+//! compatibility and retains the legacy [`GeminiEncoder`] implementation.
 //!
 //! All encoders implement the [`umms_core::traits::Encoder`] trait.
 //! The `ModelPool` also implements `Encoder`, so existing code that uses
 //! `Arc<dyn Encoder>` continues to work without changes.
 
 pub mod gemini;
-pub mod gemini_provider;
-pub mod pool;
 
-pub use gemini_provider::GeminiProvider;
-pub use pool::ModelPool;
+// Re-export from umms-model for backwards compatibility.
+pub use umms_model::{
+    EncoderStats, EncoderStatsSnapshot, GeminiProvider, ModelPool, ModelStats, ModelStatus,
+};

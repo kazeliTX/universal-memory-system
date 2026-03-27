@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/umms-core",
     "crates/umms-storage",
+    "crates/umms-model",
     "crates/umms-encoder",
     "crates/umms-retriever",
     "crates/umms-analyzer",
@@ -96,6 +97,7 @@ criterion = { version = "0.5", features = ["async_tokio"] }
 # Internal crates
 umms-core = { path = "crates/umms-core" }
 umms-storage = { path = "crates/umms-storage" }
+umms-model = { path = "crates/umms-model" }
 umms-encoder = { path = "crates/umms-encoder" }
 umms-retriever = { path = "crates/umms-retriever" }
 umms-analyzer = { path = "crates/umms-analyzer" }

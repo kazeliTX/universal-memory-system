@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 umms-core.workspace = true
 umms-storage.workspace = true
+umms-model.workspace = true
 umms-encoder.workspace = true
 umms-retriever.workspace = true
 umms-observe.workspace = true

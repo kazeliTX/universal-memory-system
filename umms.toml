@@ -81,6 +81,7 @@ reranking = "gemini-embed"
 entity_extraction = "gemini-flash"
 chat = "gemini-flash"
 
+
 [http]
 host = "127.0.0.1"
 port = 8720
@@ -88,21 +89,3 @@ port = 8720
 
 [storage]
 graph_backend = "cozo"
-# data_dir = ".umms"
-# vector_dir = "vectors"
-# graph_db = "graph.sqlite"
-# context_db = "context.sqlite"
-# files_dir = "files"
-
-# [scheduler]
-# enabled = true
-# check_interval_secs = 30
-# db = "scheduler.sqlite"
-
-# [observe]
-# metrics_enabled = true
-# tracing_enabled = true
-# dashboard_port = 8721
-# log_level = "info,lance=warn,lancedb=warn"
-# log_format = "pretty"           # "json" | "pretty"
-# log_file = ""                   # empty = stdout

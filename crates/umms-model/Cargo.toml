@@ -1,5 +1,5 @@
 [package]
-name = "umms-retriever"
+name = "umms-model"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,19 +10,9 @@ workspace = true
 
 [dependencies]
 umms-core.workspace = true
-umms-storage.workspace = true
-umms-model.workspace = true
-umms-encoder.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
-tantivy.workspace = true
-chrono.workspace = true
-jieba-rs.workspace = true
-regex-lite = "0.1"
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["test-util"] }
-uuid.workspace = true
+reqwest.workspace = true

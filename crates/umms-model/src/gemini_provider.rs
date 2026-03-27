@@ -1,6 +1,6 @@
 //! Gemini model provider — wraps embedding and generation APIs.
 //!
-//! For embedding: delegates to the existing [`GeminiEncoder`] implementation.
+//! For embedding: calls `embedContent` / `batchEmbedContents` on the Gemini API.
 //! For generation: calls `generateContent` on the Gemini API.
 
 use std::sync::atomic::Ordering;
@@ -15,7 +15,7 @@ use umms_core::config::ModelConfig;
 use umms_core::error::{EncodingError, Result, UmmsError};
 use umms_core::model::{ModelInfo, ModelProvider, ModelTask};
 
-use crate::gemini::EncoderStats;
+use crate::stats::EncoderStats;
 
 // ---------------------------------------------------------------------------
 // Gemini generateContent API types
@@ -64,7 +64,7 @@ struct CandidatePart {
     text: String,
 }
 
-// Embed API types (same as in gemini.rs, but we need them here too)
+// Embed API types
 #[derive(Serialize)]
 struct EmbedContentRequest<'a> {
     model: &'a str,
@@ -608,7 +608,6 @@ mod tests {
 
     #[test]
     fn provider_parses_tasks() {
-        // We can't create a real provider without an API key, so test task parsing separately.
         let tasks: Vec<ModelTask> = vec!["embedding", "generation", "chat"]
             .iter()
             .filter_map(|s| ModelTask::from_str_loose(s))

@@ -442,6 +442,15 @@ pub struct ModelInfoResponse {
     pub dimension: Option<usize>,
     pub max_tokens: Option<usize>,
     pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stats: Option<ModelStatsResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelStatsResponse {
+    pub total_requests: u64,
+    pub total_errors: u64,
+    pub avg_latency_ms: f64,
 }
 
 // ---------------------------------------------------------------------------

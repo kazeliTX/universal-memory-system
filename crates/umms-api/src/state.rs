@@ -10,7 +10,7 @@ use std::time::Instant;
 use umms_core::config;
 use umms_core::error::UmmsError;
 use umms_core::traits::{Encoder, KnowledgeGraphStore, TagStore};
-use umms_encoder::ModelPool;
+use umms_model::ModelPool;
 use umms_observe::AuditLog;
 use umms_persona::PersonaStore;
 use umms_retriever::pipeline::RetrievalPipeline;
