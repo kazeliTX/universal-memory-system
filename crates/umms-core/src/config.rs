@@ -22,6 +22,7 @@ pub struct UmmsConfig {
     pub tag: TagConfig,
     pub epa: EpaConfig,
     pub reshaping: ReshapingConfig,
+    pub observe: ObserveConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +255,9 @@ pub struct TagConfig {
     pub vector_dir: String,
     /// SQLite database for co-occurrence matrix (relative to data_dir).
     pub cooc_db: String,
+    /// Tokenizer strategy: "jieba" (default, Chinese+English),
+    /// "llm" (LLM-based key term extraction), "whitespace" (English only).
+    pub tokenizer: String,
 }
 
 impl Default for TagConfig {
@@ -263,6 +267,7 @@ impl Default for TagConfig {
             auto_extract: true,
             vector_dir: "tag_vectors".to_owned(),
             cooc_db: "tag_cooc.sqlite".to_owned(),
+            tokenizer: "jieba".to_owned(),
         }
     }
 }
@@ -351,6 +356,44 @@ impl Default for ReshapingConfig {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Observe (tracing / logging)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ObserveConfig {
+    /// Whether Prometheus metrics collection is active.
+    pub metrics_enabled: bool,
+    /// Whether the tracing subscriber is initialised.
+    pub tracing_enabled: bool,
+    /// Dashboard HTTP port. 0 = disabled.
+    pub dashboard_port: u16,
+    /// `EnvFilter`-compatible directive string.
+    ///
+    /// Examples: `"info"`, `"info,lance=warn,lancedb=warn"`,
+    /// `"umms=debug,info"`.
+    pub log_level: String,
+    /// Output format: `"json"` for structured JSON lines, `"pretty"` for
+    /// human-readable coloured output.
+    pub log_format: String,
+    /// Log file path. Empty string means stdout.
+    pub log_file: String,
+}
+
+impl Default for ObserveConfig {
+    fn default() -> Self {
+        Self {
+            metrics_enabled: true,
+            tracing_enabled: true,
+            dashboard_port: 8721,
+            log_level: "info,lance=warn,lancedb=warn".to_owned(),
+            log_format: "pretty".to_owned(),
+            log_file: String::new(),
+        }
+    }
+}
+
 /// Load configuration from `umms.toml` (if present) merged with env vars.
 ///
 /// Priority: env vars > umms.toml > defaults.
@@ -417,6 +460,13 @@ mod tests {
         assert_eq!(cfg.retriever.top_k_recall, 200);
         assert_eq!(cfg.retriever.lif_hops, 2);
         assert!(cfg.retriever.auto_escalate);
+        // observe
+        assert!(cfg.observe.metrics_enabled);
+        assert!(cfg.observe.tracing_enabled);
+        assert_eq!(cfg.observe.dashboard_port, 8721);
+        assert_eq!(cfg.observe.log_format, "pretty");
+        assert!(cfg.observe.log_level.contains("lance=warn"));
+        assert!(cfg.observe.log_file.is_empty());
     }
 
     #[test]

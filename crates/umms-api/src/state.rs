@@ -45,6 +45,7 @@ impl AppConfig {
             .unwrap_or_else(|_| ".".to_owned());
 
         Self {
+
             data_dir: PathBuf::from(home).join(".umms").join("dev"),
             vector_dim: 3072,
             audit_capacity: 10_000,

@@ -43,9 +43,26 @@ min_score = 0.55
 auto_escalate = true
 escalation_threshold = 3
 
+[tag]
+enabled = true
+auto_extract = true
+# Tokenizer: "jieba" (Chinese+English), "llm" (LLM key term extraction), "whitespace" (English only)
+tokenizer = "jieba"
+
+[http]
+
+
 # [storage]
 # data_dir = ".umms"
 # vector_dir = "vectors"
 # graph_db = "graph.sqlite"
 # context_db = "context.sqlite"
 # files_dir = "files"
+
+# [observe]
+# metrics_enabled = true
+# tracing_enabled = true
+# dashboard_port = 8721
+# log_level = "info,lance=warn,lancedb=warn"
+# log_format = "pretty"           # "json" | "pretty"
+# log_file = ""                   # empty = stdout

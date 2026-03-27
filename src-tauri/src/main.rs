@@ -23,8 +23,14 @@ async fn main() {
         eprintln!("Note: .env not loaded ({e}), using system env vars only");
     }
 
-    // Tracing
-    umms_observe::init_tracing("info", false);
+    // Load global config (umms.toml + env vars)
+    let umms_config = umms_core::config::load_config();
+
+    // Tracing — driven by [observe] config section
+    umms_observe::init_tracing(
+        &umms_config.observe.log_level,
+        umms_config.observe.log_format == "json",
+    );
 
     // Initialise shared state
     let config = AppConfig::dev();

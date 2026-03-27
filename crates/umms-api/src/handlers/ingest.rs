@@ -6,11 +6,14 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
 
+use umms_core::config;
 use umms_core::types::{AgentId, IsolationScope};
 use umms_observe::{AuditEventBuilder, AuditEventType};
 use umms_retriever::ingest::chunker::ChunkerConfig;
 use umms_retriever::ingest::pipeline::IngestPipeline;
 use umms_retriever::ingest::skeleton::DocSkeleton;
+use umms_retriever::ingest::tag_extractor::TagExtractor;
+use umms_retriever::tokenizer;
 
 use crate::AppState;
 use crate::response::{ChunkDetailResponse, IngestLatencyResponse, IngestResponse};
@@ -43,12 +46,30 @@ pub async fn ingest_document(
     let enc_arc: Arc<dyn umms_core::traits::Encoder> = Arc::clone(encoder) as _;
     let vec_arc: Arc<dyn umms_core::traits::VectorStore> = Arc::clone(&state.vector) as _;
 
-    let pipeline = IngestPipeline::new(
+    let umms_config = config::load_config();
+    let tok = tokenizer::build_tokenizer(
+        &umms_config.tag.tokenizer,
+        Some(Arc::clone(encoder) as Arc<dyn umms_core::traits::Encoder>),
+    );
+
+    let mut pipeline = IngestPipeline::new(
         enc_arc,
         vec_arc,
         Arc::clone(&state.bm25),
         chunker_config,
     );
+
+    // Wire up tag extraction if tag system is enabled
+    if umms_config.tag.enabled && umms_config.tag.auto_extract {
+        if let Some(ref tag_store) = state.tag_store {
+            let extractor = Arc::new(TagExtractor::new(
+                Arc::clone(tag_store),
+                Arc::clone(encoder) as Arc<dyn umms_core::traits::Encoder>,
+                tok,
+            ));
+            pipeline = pipeline.with_tag_extractor(extractor);
+        }
+    }
 
     // Use fallback skeleton (no LLM call for structure extraction yet)
     let skeleton = body.skeleton.map(|s| {

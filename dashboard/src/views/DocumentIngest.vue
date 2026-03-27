@@ -75,7 +75,8 @@ function clearAll() {
             <NRadioButton value="shared">Shared</NRadioButton>
           </NRadioGroup>
         </div>
-        <div>
+        <!-- Tags 由系统自动抽取，不再需要手动输入 -->
+        <!-- <div>
           <div style="color: #999; font-size: 12px; margin-bottom: 4px">Tags (comma-separated)</div>
           <NInput
             v-model:value="tagsInput"
@@ -83,7 +84,7 @@ function clearAll() {
             style="width: 250px"
             size="small"
           />
-        </div>
+        </div> -->
       </NSpace>
     </NCard>
 
