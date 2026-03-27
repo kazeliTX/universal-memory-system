@@ -335,6 +335,57 @@ export interface PromoteResultResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Agent Persona (M7)
+// ---------------------------------------------------------------------------
+
+export interface AgentRetrievalConfigResponse {
+  bm25_weight: number | null
+  min_score: number | null
+  top_k_final: number | null
+  lif_hops: number | null
+}
+
+export interface AgentPersonaResponse {
+  agent_id: string
+  name: string
+  role: string
+  description: string
+  expertise: string[]
+  retrieval_config: AgentRetrievalConfigResponse
+  created_at: string
+  updated_at: string
+  cache_l0: number
+  cache_l1: number
+  vector_count: number
+}
+
+export interface AgentListResponse {
+  agents: AgentPersonaResponse[]
+}
+
+export interface DeleteAgentResponse {
+  deleted: boolean
+  agent_id: string
+  had_memories: boolean
+}
+
+export interface CreateAgentRequest {
+  agent_id: string
+  name: string
+  role?: string
+  description?: string
+  expertise?: string[]
+}
+
+export interface UpdateAgentRequest {
+  name?: string
+  role?: string
+  description?: string
+  expertise?: string[]
+  system_prompt?: string
+}
+
+// ---------------------------------------------------------------------------
 // EPA
 // ---------------------------------------------------------------------------
 

@@ -43,6 +43,11 @@ const router = createRouter({
       name: 'consolidation',
       component: () => import('@/views/Consolidation.vue'),
     },
+    {
+      path: '/agents',
+      name: 'agents',
+      component: () => import('@/views/AgentManager.vue'),
+    },
   ],
 })
 

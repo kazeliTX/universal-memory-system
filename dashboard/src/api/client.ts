@@ -18,6 +18,11 @@ import type {
   GraphSearchResponse,
   FileListResponse,
   AgentDetailResponse,
+  AgentListResponse,
+  AgentPersonaResponse,
+  CreateAgentRequest,
+  UpdateAgentRequest,
+  DeleteAgentResponse,
   AuditResponse,
   BenchmarksResponse,
   SeedResponse,
@@ -155,6 +160,66 @@ export async function getFileList(agentId: string): Promise<FileListResponse> {
 export async function getAgentDetail(agentId: string): Promise<AgentDetailResponse> {
   if (IS_TAURI) return tauriInvoke('get_agent_detail', { agentId })
   return httpGet(`/api/agents/${agentId}`)
+}
+
+// ---------------------------------------------------------------------------
+// Agent Persona (M7)
+// ---------------------------------------------------------------------------
+
+export async function listAgents(): Promise<AgentListResponse> {
+  if (IS_TAURI) return tauriInvoke('list_agents')
+  return httpGet('/api/agents')
+}
+
+export async function getAgent(agentId: string): Promise<AgentPersonaResponse> {
+  if (IS_TAURI) return tauriInvoke('get_agent', { agentId })
+  return httpGet(`/api/agents/${agentId}`)
+}
+
+export async function createAgent(req: CreateAgentRequest): Promise<AgentPersonaResponse> {
+  if (IS_TAURI) {
+    return tauriInvoke('create_agent', {
+      agentId: req.agent_id,
+      name: req.name,
+      role: req.role,
+      description: req.description,
+      expertise: req.expertise,
+    })
+  }
+  const res = await fetch('/api/agents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+export async function updateAgent(agentId: string, req: UpdateAgentRequest): Promise<AgentPersonaResponse> {
+  if (IS_TAURI) {
+    return tauriInvoke('update_agent', {
+      agentId,
+      name: req.name,
+      role: req.role,
+      description: req.description,
+      expertise: req.expertise,
+      systemPrompt: req.system_prompt,
+    })
+  }
+  const res = await fetch(`/api/agents/${agentId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+export async function deleteAgent(agentId: string): Promise<DeleteAgentResponse> {
+  if (IS_TAURI) return tauriInvoke('delete_agent', { agentId })
+  const res = await fetch(`/api/agents/${agentId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
 }
 
 // ---------------------------------------------------------------------------

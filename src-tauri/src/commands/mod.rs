@@ -18,6 +18,7 @@ pub mod consolidation;
 pub mod audit;
 pub mod encoder;
 pub mod ingest;
+pub mod persona;
 pub mod system;
 pub mod files;
 pub mod tags;

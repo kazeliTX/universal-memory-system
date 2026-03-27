@@ -12,6 +12,7 @@ use umms_core::error::UmmsError;
 use umms_core::traits::{Encoder, TagStore};
 use umms_encoder::{GeminiConfig, GeminiEncoder, ModelPool};
 use umms_observe::AuditLog;
+use umms_persona::PersonaStore;
 use umms_retriever::pipeline::RetrievalPipeline;
 use umms_retriever::recall::Bm25Index;
 use umms_storage::cache::MokaMemoryCache;
@@ -85,6 +86,8 @@ pub struct AppState {
     pub tag_store: Option<Arc<dyn TagStore>>,
     /// Retrieval pipeline is `None` when encoder is unavailable.
     pub retriever: Option<RetrievalPipeline>,
+    /// Persona store for agent identity management (M7).
+    pub persona_store: Arc<PersonaStore>,
     pub metrics_registry: prometheus_client::registry::Registry,
     pub started_at: Instant,
     pub config: AppConfig,
@@ -192,6 +195,28 @@ impl AppState {
             None
         };
 
+        // Persona store (M7)
+        let persona_store = Arc::new(
+            PersonaStore::new(config.data_dir.join("personas.sqlite")).map_err(|e| {
+                UmmsError::Config(format!("persona store init failed: {e}"))
+            })?,
+        );
+
+        // Seed default personas on first run (if store is empty)
+        {
+            let existing = persona_store.list().await.map_err(|e| {
+                UmmsError::Config(format!("failed to list personas: {e}"))
+            })?;
+            if existing.is_empty() {
+                tracing::info!("seeding default personas");
+                for persona in umms_persona::default_personas() {
+                    persona_store.save(&persona).await.map_err(|e| {
+                        UmmsError::Config(format!("failed to seed persona: {e}"))
+                    })?;
+                }
+            }
+        }
+
         // Retrieval pipeline (requires encoder for query encoding)
         let retriever = encoder.as_ref().map(|enc| {
             let enc_arc: Arc<dyn Encoder> = Arc::clone(enc) as Arc<dyn Encoder>;
@@ -229,6 +254,7 @@ impl AppState {
             bm25,
             tag_store,
             retriever,
+            persona_store,
             metrics_registry,
             started_at: Instant::now(),
             config,

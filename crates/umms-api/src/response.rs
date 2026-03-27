@@ -145,6 +145,46 @@ pub struct AgentDetailResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Agent Persona (M7)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct AgentPersonaResponse {
+    pub agent_id: String,
+    pub name: String,
+    pub role: String,
+    pub description: String,
+    pub expertise: Vec<String>,
+    pub retrieval_config: AgentRetrievalConfigResponse,
+    pub created_at: String,
+    pub updated_at: String,
+    // stats
+    pub cache_l0: usize,
+    pub cache_l1: usize,
+    pub vector_count: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AgentRetrievalConfigResponse {
+    pub bm25_weight: Option<f32>,
+    pub min_score: Option<f32>,
+    pub top_k_final: Option<usize>,
+    pub lif_hops: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AgentListResponse {
+    pub agents: Vec<AgentPersonaResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteAgentResponse {
+    pub deleted: bool,
+    pub agent_id: String,
+    pub had_memories: bool,
+}
+
+// ---------------------------------------------------------------------------
 // Audit
 // ---------------------------------------------------------------------------
 

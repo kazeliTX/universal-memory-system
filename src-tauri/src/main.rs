@@ -74,8 +74,14 @@ async fn main() {
             commands::graph::get_node_detail,
             commands::graph::traverse_graph,
             commands::graph::search_graph,
-            // Agent
+            // Agent (legacy)
             commands::agent::get_agent_detail,
+            // Persona (M7)
+            commands::persona::list_agents,
+            commands::persona::get_agent,
+            commands::persona::create_agent,
+            commands::persona::update_agent,
+            commands::persona::delete_agent,
             // Audit
             commands::audit::query_audit_events,
             // Encoder

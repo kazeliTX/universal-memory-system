@@ -25,7 +25,7 @@ pub mod state;
 
 use std::sync::Arc;
 
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
@@ -79,10 +79,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/memories/files/{agent_id}",
             get(handlers::files::file_list),
         )
-        // Agent
+        // Agent persona (M7)
+        .route("/api/agents", get(handlers::agent::list_agents))
+        .route("/api/agents", post(handlers::agent::create_agent))
         .route(
             "/api/agents/{agent_id}",
             get(handlers::agent::agent_detail),
+        )
+        .route(
+            "/api/agents/{agent_id}",
+            put(handlers::agent::update_agent),
+        )
+        .route(
+            "/api/agents/{agent_id}",
+            delete(handlers::agent::delete_agent),
         )
         // Audit
         .route("/api/audit", get(handlers::audit::audit_events))
