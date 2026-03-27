@@ -59,3 +59,4 @@ target/criterion/
 
 # Claude Code
 .claude/
+chat/node_modules/
