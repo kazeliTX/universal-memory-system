@@ -8,10 +8,19 @@ publish = false
 name = "storage_e2e"
 path = "storage_e2e.rs"
 
+[[test]]
+name = "full_stack_e2e"
+path = "full_stack_e2e.rs"
+
 [dependencies]
 umms-core.workspace = true
 umms-storage.workspace = true
+umms-api.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 chrono.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+axum = { workspace = true }
+tower = { workspace = true }
+http = "1"
+tempfile = "3"
