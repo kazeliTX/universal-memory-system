@@ -19,6 +19,7 @@ serde_json.workspace = true
 tracing.workspace = true
 tantivy.workspace = true
 chrono.workspace = true
+jieba-rs.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

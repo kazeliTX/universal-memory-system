@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chrono::Utc;
+use jieba_rs::Jieba;
 use tracing::{debug, instrument};
 
 use umms_core::error::Result;
@@ -20,7 +21,7 @@ use super::chunker::Chunk;
 use super::skeleton::DocSkeleton;
 
 /// English stopwords to filter from title words.
-const STOPWORDS: &[&str] = &[
+const EN_STOPWORDS: &[&str] = &[
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
     "of", "with", "by", "from", "as", "is", "was", "are", "were", "be",
     "been", "being", "have", "has", "had", "do", "does", "did", "will",
@@ -31,15 +32,43 @@ const STOPWORDS: &[&str] = &[
     "too", "very", "just", "about", "up", "out", "all", "also", "into",
 ];
 
+/// Chinese stopwords (common function words, particles, pronouns).
+const ZH_STOPWORDS: &[&str] = &[
+    "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一",
+    "一个", "上", "也", "很", "到", "说", "要", "去", "你", "会", "着",
+    "没有", "看", "好", "自己", "这", "他", "她", "它", "们", "那", "被",
+    "从", "把", "对", "与", "为", "中", "等", "能", "以", "及", "其",
+    "而", "之", "所", "或", "但", "如", "这个", "那个", "什么", "怎么",
+    "可以", "已经", "因为", "所以", "如果", "虽然", "只是", "可能",
+    "通过", "进行", "使用", "以及", "之间", "关于", "这些", "那些",
+];
+
+/// Returns true if text contains CJK characters.
+fn has_cjk(text: &str) -> bool {
+    text.chars().any(|c| {
+        ('\u{4E00}'..='\u{9FFF}').contains(&c)
+            || ('\u{3400}'..='\u{4DBF}').contains(&c)
+            || ('\u{F900}'..='\u{FAFF}').contains(&c)
+    })
+}
+
 /// Extracts semantic tags from document content during ingestion.
+///
+/// Uses jieba-rs for Chinese text segmentation and whitespace splitting
+/// for English. Filters stopwords in both languages.
 pub struct TagExtractor {
     tag_store: Arc<dyn TagStore>,
     encoder: Arc<dyn Encoder>,
+    jieba: Jieba,
 }
 
 impl TagExtractor {
     pub fn new(tag_store: Arc<dyn TagStore>, encoder: Arc<dyn Encoder>) -> Self {
-        Self { tag_store, encoder }
+        Self {
+            tag_store,
+            encoder,
+            jieba: Jieba::new(),
+        }
     }
 
     /// Extract tags from a document's skeleton and chunks.
@@ -160,6 +189,52 @@ impl TagExtractor {
         Ok(result)
     }
 
+    /// Segment text into meaningful tokens using jieba for Chinese,
+    /// whitespace for English, and hybrid handling for mixed text.
+    fn segment_text(&self, text: &str) -> Vec<String> {
+        let en_stops: HashSet<&str> = EN_STOPWORDS.iter().copied().collect();
+        let zh_stops: HashSet<&str> = ZH_STOPWORDS.iter().copied().collect();
+        let mut results = Vec::new();
+
+        if has_cjk(text) {
+            // Use jieba for text containing Chinese characters.
+            // cut_for_search produces fine-grained segments good for indexing.
+            for word in self.jieba.cut_for_search(text, true) {
+                let trimmed = word.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                // Skip single CJK characters (too generic: 的, 了, 在...)
+                // and single ASCII characters
+                let char_count = trimmed.chars().count();
+                if char_count < 2 {
+                    continue;
+                }
+                // Skip stopwords in both languages
+                if zh_stops.contains(trimmed) || en_stops.contains(&trimmed.to_lowercase().as_str()) {
+                    continue;
+                }
+                // Skip pure punctuation / numbers
+                if trimmed.chars().all(|c| c.is_ascii_punctuation() || c.is_ascii_digit()) {
+                    continue;
+                }
+                results.push(trimmed.to_owned());
+            }
+        } else {
+            // Pure English/ASCII: whitespace split
+            for word in text.split_whitespace() {
+                let clean = word
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_owned();
+                if clean.len() >= 2 && !en_stops.contains(clean.to_lowercase().as_str()) {
+                    results.push(clean);
+                }
+            }
+        }
+
+        results
+    }
+
     /// Extract candidate label strings from skeleton + chunks.
     /// Returns one label set per chunk.
     fn extract_candidates(
@@ -167,22 +242,13 @@ impl TagExtractor {
         skeleton: &DocSkeleton,
         chunks: &[Chunk],
     ) -> Vec<Vec<String>> {
-        let stopwords: HashSet<&str> = STOPWORDS.iter().copied().collect();
-
         // Global labels from skeleton (applied to all chunks)
         let mut global_labels: Vec<String> = Vec::new();
 
-        // (a) Title words
-        for word in skeleton.title.split_whitespace() {
-            let clean = word
-                .trim_matches(|c: char| !c.is_alphanumeric())
-                .to_owned();
-            if clean.len() >= 2 && !stopwords.contains(clean.to_lowercase().as_str()) {
-                global_labels.push(clean);
-            }
-        }
+        // (a) Title — full segmentation
+        global_labels.extend(self.segment_text(&skeleton.title));
 
-        // (b) Key entities
+        // (b) Key entities — keep as-is (already meaningful phrases)
         for entity in &skeleton.key_entities {
             if !entity.name.is_empty() {
                 global_labels.push(entity.name.clone());
@@ -191,14 +257,7 @@ impl TagExtractor {
 
         // (c) Section titles
         for section in &skeleton.sections {
-            for word in section.title.split_whitespace() {
-                let clean = word
-                    .trim_matches(|c: char| !c.is_alphanumeric())
-                    .to_owned();
-                if clean.len() >= 2 && !stopwords.contains(clean.to_lowercase().as_str()) {
-                    global_labels.push(clean);
-                }
-            }
+            global_labels.extend(self.segment_text(&section.title));
         }
 
         // Per-chunk labels
@@ -207,30 +266,22 @@ impl TagExtractor {
             .map(|chunk| {
                 let mut labels = global_labels.clone();
 
-                // (d) First sentence noun-like words
+                // (d) First sentence of chunk — extract key terms
                 let first_sentence = chunk
                     .text
-                    .split_once(". ")
+                    .split_once('。')          // Chinese period
+                    .or_else(|| chunk.text.split_once(". "))  // English period
                     .map(|(s, _)| s)
                     .unwrap_or(&chunk.text);
 
-                for word in first_sentence.split_whitespace() {
-                    let clean = word
-                        .trim_matches(|c: char| !c.is_alphanumeric())
-                        .to_owned();
-                    if clean.is_empty() {
-                        continue;
-                    }
-                    // Heuristic: capitalized words or words > 4 chars
-                    let is_capitalized = clean.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
-                    let is_long = clean.len() > 4;
-                    if (is_capitalized || is_long)
-                        && !stopwords.contains(clean.to_lowercase().as_str())
-                    {
-                        labels.push(clean);
-                    }
-                }
+                // Limit first sentence analysis to 200 chars
+                let truncated = if first_sentence.len() > 200 {
+                    &first_sentence[..first_sentence.floor_char_boundary(200)]
+                } else {
+                    first_sentence
+                };
 
+                labels.extend(self.segment_text(truncated));
                 labels
             })
             .collect()
