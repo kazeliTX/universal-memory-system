@@ -94,6 +94,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/agents/{agent_id}",
             delete(handlers::agent::delete_agent),
         )
+        // Chat
+        .route("/api/chat", post(handlers::chat::chat))
         // Audit
         .route("/api/audit", get(handlers::audit::audit_events))
         // Encoder
@@ -125,6 +127,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/epa/analyze", post(handlers::epa::epa_analyze))
         // Models (M5)
         .route("/api/models", get(handlers::models::list_models))
+        // Model Traces
+        .route("/api/traces", get(handlers::traces::list_traces))
+        .route("/api/traces/summary", get(handlers::traces::trace_summary))
+        .route("/api/traces", delete(handlers::traces::clear_traces))
         // Consolidation
         .route(
             "/api/consolidation/run/{agent_id}",

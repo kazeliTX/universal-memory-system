@@ -6,8 +6,10 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use serde::Serialize;
 use tracing::{info, warn};
 
@@ -18,6 +20,9 @@ use umms_core::traits::Encoder;
 
 use crate::gemini_provider::GeminiProvider;
 use crate::stats::EncoderStats;
+use crate::trace::{
+    estimate_tokens, new_trace_id, truncate_preview, ModelTrace, TraceStore,
+};
 
 // ---------------------------------------------------------------------------
 // Model activation status types
@@ -51,6 +56,8 @@ pub struct ModelStats {
 pub struct ModelPool {
     providers: HashMap<String, Arc<GeminiProvider>>,
     routing: HashMap<ModelTask, String>,
+    /// Per-request trace store for debugging and monitoring.
+    pub trace_store: Arc<TraceStore>,
 }
 
 impl std::fmt::Debug for ModelPool {
@@ -58,6 +65,7 @@ impl std::fmt::Debug for ModelPool {
         f.debug_struct("ModelPool")
             .field("providers", &self.providers.keys().collect::<Vec<_>>())
             .field("routing", &self.routing)
+            .field("trace_store", &self.trace_store)
             .finish()
     }
 }
@@ -125,9 +133,12 @@ impl ModelPool {
             }
         }
 
+        let trace_store = Arc::new(TraceStore::new(config.trace_max_size));
+
         Ok(Self {
             providers,
             routing,
+            trace_store,
         })
     }
 
@@ -136,6 +147,11 @@ impl ModelPool {
         self.routing
             .get(&task)
             .and_then(|id| self.providers.get(id))
+    }
+
+    /// Get the model ID routed for a specific task.
+    fn model_id_for(&self, task: ModelTask) -> Option<&str> {
+        self.routing.get(&task).map(String::as_str)
     }
 
     /// List all registered models with their info.
@@ -177,7 +193,11 @@ impl ModelPool {
         self.provider_for(task).is_some()
     }
 
-    /// Convenience: embed text using the embedding model.
+    // -----------------------------------------------------------------------
+    // Traced convenience methods
+    // -----------------------------------------------------------------------
+
+    /// Convenience: embed text using the embedding model (with tracing).
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         let provider = self.provider_for(ModelTask::Embedding).ok_or_else(|| {
             UmmsError::Encoding(EncodingError::ApiCallFailed {
@@ -185,10 +205,39 @@ impl ModelPool {
                 reason: "No model configured for embedding task".into(),
             })
         })?;
-        provider.embed(text).await
+
+        let info = provider.info();
+        let model_id = self.model_id_for(ModelTask::Embedding).unwrap_or("unknown").to_owned();
+        let start = Instant::now();
+
+        let result = provider.embed(text).await;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+        let trace = ModelTrace {
+            id: new_trace_id(),
+            timestamp: Utc::now(),
+            model_id,
+            model_name: info.model_name,
+            provider: info.provider,
+            task: "embedding".to_owned(),
+            request_type: "embed".to_owned(),
+            input_preview: truncate_preview(text, 200),
+            input_tokens_estimate: estimate_tokens(text),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().map(|e| format!("{e}")),
+            output_preview: None,
+            output_dimension: result.as_ref().ok().map(|v| v.len()),
+            output_tokens_estimate: None,
+            latency_ms,
+            retry_count: 0,
+            caller: "unknown".to_owned(),
+        };
+        self.trace_store.record(trace);
+
+        result
     }
 
-    /// Convenience: embed batch using the embedding model.
+    /// Convenience: embed batch using the embedding model (with tracing).
     pub async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
         let provider = self.provider_for(ModelTask::Embedding).ok_or_else(|| {
             UmmsError::Encoding(EncodingError::ApiCallFailed {
@@ -196,10 +245,48 @@ impl ModelPool {
                 reason: "No model configured for embedding task".into(),
             })
         })?;
-        provider.embed_batch(texts).await
+
+        let info = provider.info();
+        let model_id = self.model_id_for(ModelTask::Embedding).unwrap_or("unknown").to_owned();
+        let start = Instant::now();
+
+        let result = provider.embed_batch(texts).await;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+        let input_preview = if texts.is_empty() {
+            "(empty batch)".to_owned()
+        } else {
+            truncate_preview(
+                &format!("[{} texts] {}", texts.len(), texts[0]),
+                200,
+            )
+        };
+        let input_tokens: usize = texts.iter().map(|t| estimate_tokens(t)).sum();
+        let trace = ModelTrace {
+            id: new_trace_id(),
+            timestamp: Utc::now(),
+            model_id,
+            model_name: info.model_name,
+            provider: info.provider,
+            task: "embedding".to_owned(),
+            request_type: "embed_batch".to_owned(),
+            input_preview,
+            input_tokens_estimate: input_tokens,
+            success: result.is_ok(),
+            error_message: result.as_ref().err().map(|e| format!("{e}")),
+            output_preview: None,
+            output_dimension: result.as_ref().ok().and_then(|v| v.first().map(|f| f.len())),
+            output_tokens_estimate: None,
+            latency_ms,
+            retry_count: 0,
+            caller: "unknown".to_owned(),
+        };
+        self.trace_store.record(trace);
+
+        result
     }
 
-    /// Convenience: generate text using the generation model.
+    /// Convenience: generate text using the generation model (with tracing).
     pub async fn generate(&self, prompt: &str) -> Result<String> {
         let provider = self.provider_for(ModelTask::Generation).ok_or_else(|| {
             UmmsError::Encoding(EncodingError::ApiCallFailed {
@@ -207,10 +294,39 @@ impl ModelPool {
                 reason: "No model configured for generation task".into(),
             })
         })?;
-        provider.generate(prompt, None).await
+
+        let info = provider.info();
+        let model_id = self.model_id_for(ModelTask::Generation).unwrap_or("unknown").to_owned();
+        let start = Instant::now();
+
+        let result = provider.generate(prompt, None).await;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+        let trace = ModelTrace {
+            id: new_trace_id(),
+            timestamp: Utc::now(),
+            model_id,
+            model_name: info.model_name,
+            provider: info.provider,
+            task: "generation".to_owned(),
+            request_type: "generate".to_owned(),
+            input_preview: truncate_preview(prompt, 200),
+            input_tokens_estimate: estimate_tokens(prompt),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().map(|e| format!("{e}")),
+            output_preview: result.as_ref().ok().map(|s| truncate_preview(s, 200)),
+            output_dimension: None,
+            output_tokens_estimate: result.as_ref().ok().map(|s| estimate_tokens(s)),
+            latency_ms,
+            retry_count: 0,
+            caller: "unknown".to_owned(),
+        };
+        self.trace_store.record(trace);
+
+        result
     }
 
-    /// Convenience: generate text with explicit max tokens.
+    /// Convenience: generate text with explicit max tokens (with tracing).
     pub async fn generate_with_max_tokens(
         &self,
         prompt: &str,
@@ -222,10 +338,39 @@ impl ModelPool {
                 reason: "No model configured for generation task".into(),
             })
         })?;
-        provider.generate(prompt, Some(max_tokens)).await
+
+        let info = provider.info();
+        let model_id = self.model_id_for(ModelTask::Generation).unwrap_or("unknown").to_owned();
+        let start = Instant::now();
+
+        let result = provider.generate(prompt, Some(max_tokens)).await;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+        let trace = ModelTrace {
+            id: new_trace_id(),
+            timestamp: Utc::now(),
+            model_id,
+            model_name: info.model_name,
+            provider: info.provider,
+            task: "generation".to_owned(),
+            request_type: "generate".to_owned(),
+            input_preview: truncate_preview(prompt, 200),
+            input_tokens_estimate: estimate_tokens(prompt),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().map(|e| format!("{e}")),
+            output_preview: result.as_ref().ok().map(|s| truncate_preview(s, 200)),
+            output_dimension: None,
+            output_tokens_estimate: result.as_ref().ok().map(|s| estimate_tokens(s)),
+            latency_ms,
+            retry_count: 0,
+            caller: "unknown".to_owned(),
+        };
+        self.trace_store.record(trace);
+
+        result
     }
 
-    /// Convenience: generate using the chat model.
+    /// Convenience: generate using the chat model (with tracing).
     pub async fn chat(&self, prompt: &str) -> Result<String> {
         let provider = self.provider_for(ModelTask::Chat).ok_or_else(|| {
             UmmsError::Encoding(EncodingError::ApiCallFailed {
@@ -233,10 +378,39 @@ impl ModelPool {
                 reason: "No model configured for chat task".into(),
             })
         })?;
-        provider.generate(prompt, None).await
+
+        let info = provider.info();
+        let model_id = self.model_id_for(ModelTask::Chat).unwrap_or("unknown").to_owned();
+        let start = Instant::now();
+
+        let result = provider.generate(prompt, None).await;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+        let trace = ModelTrace {
+            id: new_trace_id(),
+            timestamp: Utc::now(),
+            model_id,
+            model_name: info.model_name,
+            provider: info.provider,
+            task: "chat".to_owned(),
+            request_type: "generate".to_owned(),
+            input_preview: truncate_preview(prompt, 200),
+            input_tokens_estimate: estimate_tokens(prompt),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().map(|e| format!("{e}")),
+            output_preview: result.as_ref().ok().map(|s| truncate_preview(s, 200)),
+            output_dimension: None,
+            output_tokens_estimate: result.as_ref().ok().map(|s| estimate_tokens(s)),
+            latency_ms,
+            retry_count: 0,
+            caller: "unknown".to_owned(),
+        };
+        self.trace_store.record(trace);
+
+        result
     }
 
-    /// Convenience: generate using the entity extraction model.
+    /// Convenience: generate using the entity extraction model (with tracing).
     pub async fn extract(&self, prompt: &str) -> Result<String> {
         let provider = self.provider_for(ModelTask::EntityExtraction).ok_or_else(|| {
             UmmsError::Encoding(EncodingError::ApiCallFailed {
@@ -244,7 +418,36 @@ impl ModelPool {
                 reason: "No model configured for entity extraction task".into(),
             })
         })?;
-        provider.generate(prompt, None).await
+
+        let info = provider.info();
+        let model_id = self.model_id_for(ModelTask::EntityExtraction).unwrap_or("unknown").to_owned();
+        let start = Instant::now();
+
+        let result = provider.generate(prompt, None).await;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+        let trace = ModelTrace {
+            id: new_trace_id(),
+            timestamp: Utc::now(),
+            model_id,
+            model_name: info.model_name,
+            provider: info.provider,
+            task: "entity_extraction".to_owned(),
+            request_type: "generate".to_owned(),
+            input_preview: truncate_preview(prompt, 200),
+            input_tokens_estimate: estimate_tokens(prompt),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().map(|e| format!("{e}")),
+            output_preview: result.as_ref().ok().map(|s| truncate_preview(s, 200)),
+            output_dimension: None,
+            output_tokens_estimate: result.as_ref().ok().map(|s| estimate_tokens(s)),
+            latency_ms,
+            retry_count: 0,
+            caller: "unknown".to_owned(),
+        };
+        self.trace_store.record(trace);
+
+        result
     }
 
     /// Get embedding dimension from the configured embedding model.
@@ -327,6 +530,7 @@ mod tests {
                 entity_extraction: "gen-test".to_owned(),
                 chat: "gen-test".to_owned(),
             },
+            trace_max_size: 1000,
         }
     }
 
@@ -354,6 +558,7 @@ mod tests {
         assert_eq!(config.models[1].id, "gemini-flash");
         assert_eq!(config.routing.embedding, "gemini-embed");
         assert_eq!(config.routing.generation, "gemini-flash");
+        assert_eq!(config.trace_max_size, 1000);
     }
 
     #[test]
@@ -374,6 +579,7 @@ mod tests {
                 embedding: "unknown-model".to_owned(),
                 ..TaskRoutingConfig::default()
             },
+            trace_max_size: 1000,
         };
         let pool = ModelPool::from_config(&config).unwrap();
         assert!(pool.is_empty());
@@ -399,5 +605,12 @@ mod tests {
         let pool = ModelPool::from_config(&config).unwrap();
         let status = pool.status();
         assert!(status.is_empty());
+    }
+
+    #[test]
+    fn pool_trace_store_created() {
+        let config = make_test_config();
+        let pool = ModelPool::from_config(&config).unwrap();
+        assert_eq!(pool.trace_store.traces(100).len(), 0);
     }
 }

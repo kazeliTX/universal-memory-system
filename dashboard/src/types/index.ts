@@ -420,3 +420,55 @@ export interface EpaAnalyzeResponse {
   alpha: number
   num_semantic_axes: number
 }
+
+// ---------------------------------------------------------------------------
+// Model Traces
+// ---------------------------------------------------------------------------
+
+export interface ModelTraceResponse {
+  id: string
+  timestamp: string
+  model_id: string
+  model_name: string
+  provider: string
+  task: string
+  request_type: string
+  input_preview: string
+  input_tokens_estimate: number
+  success: boolean
+  error_message: string | null
+  output_preview: string | null
+  output_dimension: number | null
+  output_tokens_estimate: number | null
+  latency_ms: number
+  retry_count: number
+  caller: string
+}
+
+export interface TraceListResponse {
+  traces: ModelTraceResponse[]
+  total: number
+}
+
+export interface ModelTraceStatResponse {
+  model_id: string
+  count: number
+  errors: number
+  avg_latency_ms: number
+}
+
+export interface TaskTraceStatResponse {
+  task: string
+  count: number
+  errors: number
+  avg_latency_ms: number
+}
+
+export interface TraceSummaryResponse {
+  total_traces: number
+  total_errors: number
+  by_model: ModelTraceStatResponse[]
+  by_task: TaskTraceStatResponse[]
+  avg_latency_ms: number
+  p99_latency_ms: number
+}

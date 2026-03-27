@@ -82,6 +82,8 @@ async fn main() {
             commands::persona::create_agent,
             commands::persona::update_agent,
             commands::persona::delete_agent,
+            // Chat
+            commands::chat::chat,
             // Audit
             commands::audit::query_audit_events,
             // Encoder
@@ -99,6 +101,10 @@ async fn main() {
             commands::tags::epa_analyze,
             // Consolidation
             commands::consolidation::run_consolidation,
+            // Model Traces
+            commands::traces::list_traces,
+            commands::traces::trace_summary,
+            commands::traces::clear_traces,
         ])
         .run(tauri::generate_context!())
         .expect("error running UMMS desktop");

@@ -48,6 +48,11 @@ const router = createRouter({
       name: 'agents',
       component: () => import('@/views/AgentManager.vue'),
     },
+    {
+      path: '/traces',
+      name: 'traces',
+      component: () => import('@/views/ModelTraces.vue'),
+    },
   ],
 })
 

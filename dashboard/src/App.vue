@@ -21,6 +21,7 @@ import {
   PricetagsOutline,
   SyncOutline,
   PeopleOutline,
+  AnalyticsOutline,
 } from '@vicons/ionicons5'
 import { NIcon } from 'naive-ui'
 
@@ -75,6 +76,11 @@ const menuOptions: MenuOption[] = [
     label: () => h(RouterLink, { to: '/agents' }, { default: () => '智能体管理' }),
     key: 'agents',
     icon: renderIcon(PeopleOutline),
+  },
+  {
+    label: () => h(RouterLink, { to: '/traces' }, { default: () => '模型追踪' }),
+    key: 'traces',
+    icon: renderIcon(AnalyticsOutline),
   },
 ]
 

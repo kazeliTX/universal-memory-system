@@ -204,6 +204,8 @@ pub struct ModelPoolConfig {
     pub models: Vec<ModelConfig>,
     /// Task routing: which model ID to use for each task type.
     pub routing: TaskRoutingConfig,
+    /// Maximum number of request traces to keep in the ring buffer.
+    pub trace_max_size: usize,
 }
 
 /// Configuration for a single model backend.
@@ -279,6 +281,7 @@ impl Default for ModelPoolConfig {
                 },
             ],
             routing: TaskRoutingConfig::default(),
+            trace_max_size: 1000,
         }
     }
 }

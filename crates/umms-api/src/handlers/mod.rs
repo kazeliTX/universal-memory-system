@@ -7,6 +7,7 @@
 pub mod agent;
 pub mod audit;
 pub mod benchmarks;
+pub mod chat;
 pub mod consolidation;
 pub mod encoder;
 pub mod epa;
@@ -17,4 +18,5 @@ pub mod memory;
 pub mod models;
 pub mod system;
 pub mod tags;
+pub mod traces;
 pub mod ws;

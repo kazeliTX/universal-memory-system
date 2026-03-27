@@ -34,6 +34,8 @@ import type {
   CooccurrenceResponse,
   EpaAnalyzeResponse,
   ConsolidationReportResponse,
+  TraceListResponse,
+  TraceSummaryResponse,
 } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -385,6 +387,35 @@ export async function encodeText(text: string): Promise<{ vector: number[] }> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
   })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
+// Model Traces
+// ---------------------------------------------------------------------------
+
+export async function listTraces(
+  limit?: number,
+  modelId?: string,
+  task?: string,
+): Promise<TraceListResponse> {
+  if (IS_TAURI) return tauriInvoke('list_traces', { limit, modelId, task })
+  const qs = new URLSearchParams()
+  if (limit) qs.set('limit', String(limit))
+  if (modelId) qs.set('model_id', modelId)
+  if (task) qs.set('task', task)
+  return httpGet(`/api/traces?${qs}`)
+}
+
+export async function traceSummary(): Promise<TraceSummaryResponse> {
+  if (IS_TAURI) return tauriInvoke('trace_summary')
+  return httpGet('/api/traces/summary')
+}
+
+export async function clearTraces(): Promise<{ cleared: boolean }> {
+  if (IS_TAURI) return tauriInvoke('clear_traces')
+  const res = await fetch('/api/traces', { method: 'DELETE' })
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
   return res.json()
 }

@@ -532,6 +532,82 @@ impl From<umms_scheduler::TaskExecution> for TaskExecutionResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct ChatResponse {
+    pub message: String,
+    pub agent_id: String,
+    pub sources: Vec<ChatSource>,
+    pub latency_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChatSource {
+    pub content: String,
+    pub score: f32,
+    pub memory_id: String,
+}
+
+// ---------------------------------------------------------------------------
+// Model Traces
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct TraceListResponse {
+    pub traces: Vec<ModelTraceResponse>,
+    pub total: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelTraceResponse {
+    pub id: String,
+    pub timestamp: String,
+    pub model_id: String,
+    pub model_name: String,
+    pub provider: String,
+    pub task: String,
+    pub request_type: String,
+    pub input_preview: String,
+    pub input_tokens_estimate: usize,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub output_preview: Option<String>,
+    pub output_dimension: Option<usize>,
+    pub output_tokens_estimate: Option<usize>,
+    pub latency_ms: u64,
+    pub retry_count: u32,
+    pub caller: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TraceSummaryResponse {
+    pub total_traces: usize,
+    pub total_errors: usize,
+    pub by_model: Vec<ModelTraceStatResponse>,
+    pub by_task: Vec<TaskTraceStatResponse>,
+    pub avg_latency_ms: f64,
+    pub p99_latency_ms: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelTraceStatResponse {
+    pub model_id: String,
+    pub count: usize,
+    pub errors: usize,
+    pub avg_latency_ms: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TaskTraceStatResponse {
+    pub task: String,
+    pub count: usize,
+    pub errors: usize,
+    pub avg_latency_ms: f64,
+}
+
+// ---------------------------------------------------------------------------
 // Seed
 // ---------------------------------------------------------------------------
 
