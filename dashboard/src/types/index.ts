@@ -386,6 +386,24 @@ export interface UpdateAgentRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Graph visualization (force-directed)
+// ---------------------------------------------------------------------------
+
+export interface ForceGraphNode {
+  id: string
+  label: string
+  group?: string
+  size?: number
+}
+
+export interface ForceGraphLink {
+  source: string
+  target: string
+  weight?: number
+  label?: string
+}
+
+// ---------------------------------------------------------------------------
 // EPA
 // ---------------------------------------------------------------------------
 

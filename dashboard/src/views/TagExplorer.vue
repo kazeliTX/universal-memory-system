@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, watch, h } from 'vue'
+import { ref, watch, h, computed } from 'vue'
 import {
   NCard, NSpace, NSelect, NDataTable, NTag, NEmpty, NSpin,
-  NInput, NButton, NModal, NDescriptions, NDescriptionsItem,
+  NInput, NButton, NModal,
   type DataTableColumns,
 } from 'naive-ui'
 import { listTags, searchTags, getTagCooccurrences } from '@/api/client'
-import type { TagResponse, TagMatchResponse, CoocEntry, CooccurrenceResponse } from '@/types'
+import type { TagResponse, TagMatchResponse, CoocEntry, CooccurrenceResponse, ForceGraphNode, ForceGraphLink } from '@/types'
+import ForceGraph from '@/components/graph/ForceGraph.vue'
 
 const agents = ['coder', 'researcher', 'writer']
 const selectedAgent = ref('coder')
@@ -23,6 +24,63 @@ const showCooc = ref(false)
 const coocLoading = ref(false)
 const coocData = ref<CooccurrenceResponse | null>(null)
 const selectedTagLabel = ref('')
+const selectedTagId = ref('')
+
+// Graph visualization
+const graphTag = ref<TagResponse | null>(null)
+const graphCoocData = ref<CooccurrenceResponse | null>(null)
+const graphLoading = ref(false)
+
+const graphNodes = computed<ForceGraphNode[]>(() => {
+  if (!graphTag.value || !graphCoocData.value) return []
+  const center: ForceGraphNode = {
+    id: graphTag.value.id,
+    label: graphTag.value.label,
+    group: 'center',
+    size: Math.max(6, Math.min(14, graphTag.value.frequency * 0.5)),
+  }
+  const neighbors: ForceGraphNode[] = graphCoocData.value.cooccurrences.map((c) => ({
+    id: c.partner_tag.id,
+    label: c.partner_tag.label,
+    group: 'tag',
+    size: Math.max(4, Math.min(10, c.partner_tag.frequency * 0.4)),
+  }))
+  return [center, ...neighbors]
+})
+
+const graphLinks = computed<ForceGraphLink[]>(() => {
+  if (!graphTag.value || !graphCoocData.value) return []
+  // Normalize PMI for link weight: map PMI range to 0.5..3
+  const pmis = graphCoocData.value.cooccurrences.map((c) => c.pmi)
+  const maxPmi = Math.max(...pmis, 1)
+  return graphCoocData.value.cooccurrences.map((c) => ({
+    source: graphTag.value!.id,
+    target: c.partner_tag.id,
+    weight: 0.5 + (c.pmi / maxPmi) * 2.5,
+  }))
+})
+
+async function loadGraphForTag(tag: TagResponse) {
+  graphTag.value = tag
+  graphLoading.value = true
+  try {
+    graphCoocData.value = await getTagCooccurrences(tag.id)
+  } catch {
+    graphCoocData.value = null
+  } finally {
+    graphLoading.value = false
+  }
+}
+
+function handleGraphNodeClick(node: ForceGraphNode) {
+  // If clicking a neighbor tag, re-center the graph on that tag
+  if (node.id === graphTag.value?.id) return
+  const matchingTag = tags.value.find((t) => t.id === node.id)
+  // Also check co-occurrence partner tags
+  const partnerTag = graphCoocData.value?.cooccurrences.find((c) => c.partner_tag.id === node.id)?.partner_tag
+  const tag = matchingTag ?? (partnerTag ? { ...partnerTag } : null)
+  if (tag) loadGraphForTag(tag)
+}
 
 const columns: DataTableColumns<TagResponse> = [
   { title: 'Label', key: 'label', sorter: 'default' },
@@ -43,17 +101,20 @@ const columns: DataTableColumns<TagResponse> = [
   {
     title: 'Actions',
     key: 'actions',
-    width: 140,
+    width: 260,
     render: (row) =>
-      h(
-        NButton,
-        {
-          size: 'small',
-          type: 'info',
-          onClick: () => showCooccurrences(row),
-        },
-        () => 'Co-occurrences',
-      ),
+      h(NSpace, { size: 8 }, () => [
+        h(
+          NButton,
+          { size: 'small', type: 'info', onClick: () => showCooccurrences(row) },
+          () => 'Co-occurrences',
+        ),
+        h(
+          NButton,
+          { size: 'small', type: 'success', onClick: () => loadGraphForTag(row) },
+          () => 'Graph',
+        ),
+      ]),
   },
 ]
 
@@ -120,6 +181,7 @@ async function handleSearch() {
 
 async function showCooccurrences(tag: TagResponse) {
   selectedTagLabel.value = tag.label
+  selectedTagId.value = tag.id
   showCooc.value = true
   coocLoading.value = true
   try {
@@ -129,7 +191,11 @@ async function showCooccurrences(tag: TagResponse) {
   }
 }
 
-watch(selectedAgent, refresh, { immediate: true })
+watch(selectedAgent, () => {
+  graphTag.value = null
+  graphCoocData.value = null
+  refresh()
+}, { immediate: true })
 </script>
 
 <template>
@@ -144,6 +210,32 @@ watch(selectedAgent, refresh, { immediate: true })
       />
       <NTag type="info" size="small">{{ tags.length }} tags</NTag>
     </NSpace>
+
+    <!-- Tag Co-occurrence Graph -->
+    <NCard title="Tag Co-occurrence Graph" size="small">
+      <template #header-extra>
+        <NTag v-if="graphTag" type="success" size="small" closable @close="graphTag = null; graphCoocData = null">
+          {{ graphTag.label }}
+        </NTag>
+      </template>
+      <NSpin :show="graphLoading">
+        <div v-if="graphNodes.length > 0">
+          <p style="margin: 0 0 8px; color: #8b949e; font-size: 12px">
+            Click a tag in the table below (Graph button) to visualize its co-occurrence network.
+            Click a neighbor node to re-center.
+          </p>
+          <ForceGraph
+            :nodes="graphNodes"
+            :links="graphLinks"
+            :width="780"
+            :height="420"
+            :center-node-id="graphTag?.id"
+            @node-click="handleGraphNodeClick"
+          />
+        </div>
+        <NEmpty v-else description="Select a tag from the table below and click 'Graph' to visualize co-occurrences." />
+      </NSpin>
+    </NCard>
 
     <!-- Semantic Search -->
     <NCard title="Search Tags by Meaning" size="small">
