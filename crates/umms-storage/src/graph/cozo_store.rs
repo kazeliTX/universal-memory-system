@@ -179,9 +179,9 @@ impl CozoGraphStore {
 
     /// Create relations (tables) if they don't already exist.
     fn ensure_relations(&self) -> std::result::Result<(), UmmsError> {
-        let res = self.db.run_script(
+        self.db.run_script(
             r"
-            :create nodes {
+            :ensure nodes {
                 id: String
                 =>
                 agent_id: String,
@@ -195,17 +195,11 @@ impl CozoGraphStore {
             ",
             Default::default(),
             ScriptMutability::Mutable,
-        );
-        if let Err(e) = &res {
-            let msg = e.to_string();
-            if !msg.contains("already exists") && !msg.contains("conflicts with an existing one") {
-                return Err(cozo_err(e));
-            }
-        }
+        ).map_err(|e| cozo_err(&e))?;
 
-        let res = self.db.run_script(
+        self.db.run_script(
             r"
-            :create edges {
+            :ensure edges {
                 id: String
                 =>
                 source_id: String,
@@ -219,13 +213,6 @@ impl CozoGraphStore {
             Default::default(),
             ScriptMutability::Mutable,
         );
-        if let Err(e) = &res {
-            let msg = e.to_string();
-            if !msg.contains("already exists") && !msg.contains("conflicts with an existing one") {
-                return Err(cozo_err(e));
-            }
-        }
-
         Ok(())
     }
 }
