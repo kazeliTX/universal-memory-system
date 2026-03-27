@@ -94,6 +94,11 @@ graph_backend = "cozo"
 # context_db = "context.sqlite"
 # files_dir = "files"
 
+# [scheduler]
+# enabled = true
+# check_interval_secs = 30
+# db = "scheduler.sqlite"
+
 # [observe]
 # metrics_enabled = true
 # tracing_enabled = true

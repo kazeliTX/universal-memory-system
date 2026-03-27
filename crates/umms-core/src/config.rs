@@ -26,6 +26,7 @@ pub struct UmmsConfig {
     pub observe: ObserveConfig,
     pub model_pool: ModelPoolConfig,
     pub http: HttpConfig,
+    pub scheduler: SchedulerConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +156,13 @@ pub struct RetrieverConfig {
     pub lif_hops: usize,
     /// Maximum nodes visited during diffusion (prevents runaway on dense graphs).
     pub lif_max_nodes: usize,
+    /// Decay factor per hop for LIF diffusion scoring (0.0..=1.0).
+    /// Score = seed_score × decay_factor^hops × node_importance.
+    pub lif_decay_factor: f32,
+    /// Edge weight for "follows" edges between consecutive chunks.
+    pub graph_follows_weight: f32,
+    /// Base edge weight for "shares_tag" edges (multiplied by shared tag count).
+    pub graph_tag_weight: f32,
     /// Minimum score threshold — results below this are filtered out.
     pub min_score: f32,
     /// Whether to auto-escalate search depth when results are insufficient.
@@ -310,6 +318,31 @@ impl Default for HttpConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Scheduler
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct SchedulerConfig {
+    /// Whether the scheduler engine is active.
+    pub enabled: bool,
+    /// Interval in seconds between scheduler poll cycles.
+    pub check_interval_secs: u64,
+    /// SQLite database filename for scheduler state (relative to data_dir).
+    pub db: String,
+}
+
+impl Default for SchedulerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            check_interval_secs: 30,
+            db: "scheduler.sqlite".to_owned(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Defaults
 // ---------------------------------------------------------------------------
 
@@ -376,6 +409,9 @@ impl Default for RetrieverConfig {
             top_k_final: 10,
             lif_hops: 2,
             lif_max_nodes: 100,
+            lif_decay_factor: 0.5,
+            graph_follows_weight: 1.0,
+            graph_tag_weight: 0.5,
             min_score: 0.0,
             auto_escalate: true,
             escalation_threshold: 3,

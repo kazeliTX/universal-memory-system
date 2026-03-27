@@ -105,6 +105,8 @@ pub enum ScoreSource {
     Hybrid,
     Rerank,
     Diffusion,
+    /// Discovered via LIF graph diffusion from memory-linked nodes.
+    GraphDiffusion,
 }
 
 /// Knowledge graph node type.

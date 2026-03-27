@@ -8,6 +8,7 @@
 //! 5. Store in VectorStore + index in BM25
 
 pub mod chunker;
+pub mod graph_builder;
 pub mod pipeline;
 pub mod skeleton;
 pub mod tag_extractor;

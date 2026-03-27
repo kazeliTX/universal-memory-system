@@ -16,6 +16,8 @@ umms-retriever.workspace = true
 umms-observe.workspace = true
 umms-consolidation.workspace = true
 umms-persona.workspace = true
+umms-scheduler.workspace = true
+uuid.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 axum = { workspace = true, features = ["ws"] }

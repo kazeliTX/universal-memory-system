@@ -17,7 +17,8 @@ use umms_core::traits::{
     Encoder, KnowledgeGraphStore, Retriever, RetrievalLatency, RetrievalResult, TagStore,
     VectorStore,
 };
-use umms_core::types::{AgentId, ScoredMemory, ScoreSource};
+use umms_core::error::UmmsError;
+use umms_core::types::{AgentId, MemoryId, ScoredMemory, ScoreSource};
 
 use crate::epa::EpaAnalyzer;
 use crate::recall::bm25::Bm25Index;
@@ -248,111 +249,96 @@ impl RetrievalPipeline {
 
     /// Stage 3: LIF cognitive diffusion — expand results via knowledge graph.
     ///
-    /// For each reranked result, find related nodes in the graph up to
-    /// `lif_hops` away. Entries connected to those nodes are added as
-    /// diffusion-discovered results.
-    #[instrument(skip(self, reranked), fields(agent = %agent_id, hops = self.config.lif_hops))]
+    /// For each seed (top reranked result), find the corresponding graph node
+    /// by searching `find_nodes(memory_id, agent_id, 1)`, then traverse N hops.
+    /// Discovered nodes with a "memory_id" property are loaded from the vector
+    /// store and scored with exponential decay: `seed_score * 0.5^hops * node_importance`.
+    #[instrument(skip(self, seeds), fields(agent = %agent_id, hops = self.config.lif_hops))]
     async fn diffuse(
         &self,
-        reranked: &[ScoredMemory],
+        seeds: &[ScoredMemory],
         agent_id: &AgentId,
     ) -> Result<Vec<ScoredMemory>> {
-        if self.config.lif_hops == 0 {
+        if self.config.lif_hops == 0 || seeds.is_empty() {
             return Ok(Vec::new());
         }
 
-        let mut diffusion_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let existing_ids: std::collections::HashSet<String> = reranked
+        let mut seen: std::collections::HashSet<String> = seeds
             .iter()
-            .map(|sm| sm.entry.id.as_str().to_owned())
+            .map(|s| s.entry.id.as_str().to_owned())
             .collect();
+        let mut discovered = Vec::new();
 
-        // For each reranked entry, find graph nodes with matching labels
-        // and traverse their neighborhoods.
-        for sm in reranked.iter().take(5) {
-            // Use first few words as label query
-            let label_query = sm
-                .entry
-                .content_text
-                .as_deref()
-                .unwrap_or("")
-                .split_whitespace()
-                .take(3)
-                .collect::<Vec<_>>()
-                .join(" ");
-
-            if label_query.is_empty() {
-                continue;
-            }
-
-            let nodes = self
+        for seed in seeds.iter().take(5) {
+            // Find graph node for this memory by searching label = memory_id
+            let nodes = match self
                 .graph
-                .find_nodes(&label_query, Some(agent_id), 3)
-                .await?;
+                .find_nodes(seed.entry.id.as_str(), Some(agent_id), 1)
+                .await
+            {
+                Ok(n) => n,
+                Err(e) => {
+                    tracing::warn!(
+                        memory_id = %seed.entry.id,
+                        error = %e,
+                        "Graph find_nodes failed during diffusion, skipping seed"
+                    );
+                    continue;
+                }
+            };
 
-            for node in &nodes {
-                let (traversed_nodes, _edges) = self
-                    .graph
-                    .traverse(&node.id, self.config.lif_hops, Some(agent_id))
-                    .await?;
+            let seed_node = match nodes.first() {
+                Some(n) => n,
+                None => continue,
+            };
 
-                for tn in &traversed_nodes {
-                    // Node labels that differ from the original query
-                    // represent diffusion-discovered concepts.
-                    if !diffusion_ids.contains(&tn.label)
-                        && diffusion_ids.len() < self.config.lif_max_nodes
-                    {
-                        diffusion_ids.insert(tn.id.as_str().to_owned());
+            // BFS traverse from seed node
+            let (reached, _) = match self
+                .graph
+                .traverse(&seed_node.id, self.config.lif_hops, Some(agent_id))
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!(
+                        node_id = %seed_node.id,
+                        error = %e,
+                        "Graph traverse failed during diffusion, skipping seed"
+                    );
+                    continue;
+                }
+            };
+
+            for node in &reached {
+                if let Some(mid) = node.properties.get("memory_id").and_then(|v| v.as_str()) {
+                    if seen.contains(mid) {
+                        continue;
+                    }
+                    seen.insert(mid.to_owned());
+
+                    let mem_id = MemoryId::from_str(mid).map_err(|e| {
+                        UmmsError::Internal(format!("bad memory_id in graph: {e}"))
+                    })?;
+
+                    if let Ok(Some(entry)) = self.vector.get(&mem_id).await {
+                        let score = seed.score * 0.5 * node.importance;
+                        discovered.push(ScoredMemory {
+                            entry,
+                            score,
+                            source: ScoreSource::GraphDiffusion,
+                        });
                     }
                 }
             }
         }
 
-        // Look up memory entries whose content matches diffusion-discovered node labels.
-        // This bridges graph nodes back to vector-stored memories.
-        let mut diffusion_results = Vec::new();
-        for node_id in &diffusion_ids {
-            // Search for memories related to discovered node labels
-            if let Ok(Some(node)) = self.graph.get_node(
-                &umms_core::types::NodeId::from_str(node_id)
-                    .unwrap_or_else(|_| umms_core::types::NodeId::new()),
-            ).await {
-                // Use node label as a search query in vector store
-                if let Some(ref vec) = reranked.first().and_then(|sm| sm.entry.vector.clone()) {
-                    // Search vector store for entries matching this node's label
-                    let label_results = self
-                        .vector
-                        .search(agent_id, vec, 3, true)
-                        .await
-                        .unwrap_or_default();
-
-                    for sr in label_results {
-                        if !existing_ids.contains(sr.entry.id.as_str())
-                            && !diffusion_results
-                                .iter()
-                                .any(|d: &ScoredMemory| d.entry.id == sr.entry.id)
-                        {
-                            // Apply distance decay: score × (1 / 2^hops)
-                            // We don't track exact hop count per node here,
-                            // so use a flat decay factor for discovered nodes
-                            let decayed_score = sr.score * 0.5;
-
-                            diffusion_results.push(ScoredMemory {
-                                entry: sr.entry,
-                                score: decayed_score,
-                                source: ScoreSource::Diffusion,
-                            });
-                        }
-                    }
-                }
-            }
-
-            if diffusion_results.len() >= self.config.lif_max_nodes {
-                break;
-            }
-        }
-
-        Ok(diffusion_results)
+        discovered.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        discovered.truncate(self.config.lif_max_nodes);
+        Ok(discovered)
     }
 }
 

@@ -8,6 +8,7 @@ members = [
     "crates/umms-analyzer",
     "crates/umms-consolidation",
     "crates/umms-persona",
+    "crates/umms-scheduler",
     "crates/umms-api",
     "crates/umms-observe",
     "crates/umms-python",
@@ -102,5 +103,6 @@ umms-consolidation = { path = "crates/umms-consolidation" }
 umms-persona = { path = "crates/umms-persona" }
 umms-api = { path = "crates/umms-api" }
 umms-observe = { path = "crates/umms-observe" }
+umms-scheduler = { path = "crates/umms-scheduler" }
 umms-python = { path = "crates/umms-python" }
 umms-server = { path = "crates/umms-server" }

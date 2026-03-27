@@ -298,6 +298,8 @@ pub struct IngestResponse {
     pub total_ms: u64,
     pub latency: IngestLatencyResponse,
     pub chunks: Vec<ChunkDetailResponse>,
+    pub graph_nodes_created: usize,
+    pub graph_edges_created: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -306,6 +308,7 @@ pub struct IngestLatencyResponse {
     pub skeleton_ms: u64,
     pub encode_ms: u64,
     pub store_ms: u64,
+    pub graph_ms: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -439,6 +442,84 @@ pub struct ModelInfoResponse {
     pub dimension: Option<usize>,
     pub max_tokens: Option<usize>,
     pub available: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Scheduler
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct ScheduledTaskResponse {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub task_type: String,
+    pub schedule: String,
+    pub enabled: bool,
+    pub params: serde_json::Value,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_run_at: Option<String>,
+    pub next_run_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TaskListResponse {
+    pub tasks: Vec<ScheduledTaskResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TaskExecutionResponse {
+    pub id: String,
+    pub task_id: String,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub status: String,
+    pub result: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExecutionListResponse {
+    pub executions: Vec<TaskExecutionResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TriggerTaskResponse {
+    pub execution_id: String,
+    pub message: String,
+}
+
+/// Convert a `ScheduledTask` to the API response type.
+impl From<umms_scheduler::ScheduledTask> for ScheduledTaskResponse {
+    fn from(t: umms_scheduler::ScheduledTask) -> Self {
+        Self {
+            id: t.id,
+            name: t.name,
+            description: t.description,
+            task_type: t.task_type.to_string(),
+            schedule: t.schedule.to_string(),
+            enabled: t.enabled,
+            params: t.params,
+            created_at: t.created_at.to_rfc3339(),
+            updated_at: t.updated_at.to_rfc3339(),
+            last_run_at: t.last_run_at.map(|t| t.to_rfc3339()),
+            next_run_at: t.next_run_at.map(|t| t.to_rfc3339()),
+        }
+    }
+}
+
+/// Convert a `TaskExecution` to the API response type.
+impl From<umms_scheduler::TaskExecution> for TaskExecutionResponse {
+    fn from(e: umms_scheduler::TaskExecution) -> Self {
+        Self {
+            id: e.id,
+            task_id: e.task_id,
+            started_at: e.started_at.to_rfc3339(),
+            finished_at: e.finished_at.map(|t| t.to_rfc3339()),
+            status: e.status.to_string(),
+            result: e.result,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -64,6 +64,9 @@ pub async fn ingest_document(
         pipeline = pipeline.with_model_pool(Arc::clone(pool));
     }
 
+    // Wire up graph store for chunk-level graph node creation
+    pipeline = pipeline.with_graph(Arc::clone(&state.graph));
+
     // Wire up tag extraction if tag system is enabled
     if umms_config.tag.enabled && umms_config.tag.auto_extract {
         if let Some(ref tag_store) = state.tag_store {
@@ -121,8 +124,11 @@ pub async fn ingest_document(
             skeleton_ms: result.latency.skeleton_ms,
             encode_ms: result.latency.encode_ms,
             store_ms: result.latency.store_ms,
+            graph_ms: result.latency.graph_ms,
         },
         chunks,
+        graph_nodes_created: result.graph_nodes_created,
+        graph_edges_created: result.graph_edges_created,
     }))
 }
 

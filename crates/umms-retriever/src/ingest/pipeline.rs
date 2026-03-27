@@ -8,13 +8,14 @@ use std::sync::Arc;
 use tracing::{info, instrument, warn};
 
 use umms_core::error::Result;
-use umms_core::traits::{Encoder, VectorStore};
+use umms_core::traits::{Encoder, KnowledgeGraphStore, VectorStore};
 use umms_core::types::{AgentId, IsolationScope, MemoryEntryBuilder, MemoryLayer, Modality};
 use umms_encoder::ModelPool;
 
 use crate::recall::Bm25Index;
 
 use super::chunker::{ChunkerConfig, chunk_text};
+use super::graph_builder::GraphBuilder;
 use super::skeleton::{self, DocSkeleton};
 use super::tag_extractor::TagExtractor;
 
@@ -33,6 +34,10 @@ pub struct IngestResult {
     pub latency: IngestLatency,
     /// Chunk details for visualization.
     pub chunk_details: Vec<ChunkDetail>,
+    /// Number of graph nodes created for chunk linking.
+    pub graph_nodes_created: usize,
+    /// Number of graph edges created for chunk linking.
+    pub graph_edges_created: usize,
 }
 
 /// Detail of a single chunk for dashboard visualization.
@@ -61,6 +66,7 @@ pub struct IngestLatency {
     pub skeleton_ms: u64,
     pub encode_ms: u64,
     pub store_ms: u64,
+    pub graph_ms: u64,
 }
 
 /// The document ingestion pipeline.
@@ -74,6 +80,9 @@ pub struct IngestPipeline {
     /// When `Some`, the pipeline uses [`skeleton::extract_skeleton_llm`] instead
     /// of the heuristic fallback.
     model_pool: Option<Arc<ModelPool>>,
+    /// Optional knowledge graph store for creating chunk-level graph nodes.
+    /// When `Some`, the pipeline creates KgNodes for each chunk and links them.
+    graph: Option<Arc<dyn KnowledgeGraphStore>>,
 }
 
 impl IngestPipeline {
@@ -90,6 +99,7 @@ impl IngestPipeline {
             chunker_config,
             tag_extractor: None,
             model_pool: None,
+            graph: None,
         }
     }
 
@@ -105,6 +115,15 @@ impl IngestPipeline {
     /// document structure instead of the heuristic fallback.
     pub fn with_model_pool(mut self, pool: Arc<ModelPool>) -> Self {
         self.model_pool = Some(pool);
+        self
+    }
+
+    /// Attach a knowledge graph store for creating chunk-level graph nodes.
+    ///
+    /// When set, [`Self::ingest`] will create KgNodes for each chunk and
+    /// connect them with "follows" and "shares_tag" edges.
+    pub fn with_graph(mut self, graph: Arc<dyn KnowledgeGraphStore>) -> Self {
+        self.graph = Some(graph);
         self
     }
 
@@ -139,6 +158,8 @@ impl IngestPipeline {
                 total_ms: total_start.elapsed().as_millis() as u64,
                 latency,
                 chunk_details: Vec::new(),
+                graph_nodes_created: 0,
+                graph_edges_created: 0,
             });
         }
 
@@ -261,10 +282,41 @@ impl IngestPipeline {
 
         latency.store_ms = store_start.elapsed().as_millis() as u64;
 
+        // Stage 5: Build graph nodes and edges (if graph store is available)
+        let (graph_nodes_created, graph_edges_created) = if let Some(ref graph) = self.graph {
+            let graph_start = std::time::Instant::now();
+            let memory_ids: Vec<String> = chunk_details.iter().map(|cd| cd.memory_id.clone()).collect();
+            let texts: Vec<String> = chunk_details.iter().map(|cd| cd.original_text.clone()).collect();
+            let tags_per: Vec<Vec<String>> = chunk_details.iter().map(|cd| cd.tags.clone()).collect();
+
+            let result = GraphBuilder::build_from_chunks(
+                graph.as_ref(),
+                &memory_ids,
+                &texts,
+                &agent_id,
+                &tags_per,
+            )
+            .await;
+
+            latency.graph_ms = graph_start.elapsed().as_millis() as u64;
+
+            match result {
+                Ok((nodes, edges)) => (nodes, edges),
+                Err(e) => {
+                    warn!("Graph building failed (continuing without graph): {e}");
+                    (0, 0)
+                }
+            }
+        } else {
+            (0, 0)
+        };
+
         let stored = entries.len();
         info!(
             chunks_created = chunks.len(),
             chunks_stored = stored,
+            graph_nodes = graph_nodes_created,
+            graph_edges = graph_edges_created,
             total_ms = total_start.elapsed().as_millis() as u64,
             "Document ingestion complete"
         );
@@ -276,6 +328,8 @@ impl IngestPipeline {
             total_ms: total_start.elapsed().as_millis() as u64,
             latency,
             chunk_details,
+            graph_nodes_created,
+            graph_edges_created,
         })
     }
 }

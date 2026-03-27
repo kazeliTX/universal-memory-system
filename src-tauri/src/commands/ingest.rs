@@ -38,7 +38,8 @@ pub async fn ingest_document(
         vec_arc,
         Arc::clone(&state.bm25),
         ChunkerConfig::default(),
-    );
+    )
+    .with_graph(Arc::clone(&state.graph));
 
     let result = pipeline
         .ingest(&text, &aid, iso_scope, tags.unwrap_or_default(), None)
@@ -70,7 +71,10 @@ pub async fn ingest_document(
             skeleton_ms: result.latency.skeleton_ms,
             encode_ms: result.latency.encode_ms,
             store_ms: result.latency.store_ms,
+            graph_ms: result.latency.graph_ms,
         },
         chunks,
+        graph_nodes_created: result.graph_nodes_created,
+        graph_edges_created: result.graph_edges_created,
     })
 }
