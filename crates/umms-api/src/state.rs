@@ -101,7 +101,8 @@ impl AppState {
 
         tracing::info!(data_dir = ?config.data_dir, "initialising storage backends");
 
-        let cache = MokaMemoryCache::new();
+        let umms_cfg = config::load_config();
+        let cache = MokaMemoryCache::from_config(&umms_cfg.cache.l0, &umms_cfg.cache.l1);
 
         let vector = Arc::new(LanceVectorStore::new(
             config.data_dir.join("lance").to_str().ok_or_else(|| {

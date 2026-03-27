@@ -35,14 +35,101 @@ impl Default for ChunkerConfig {
     }
 }
 
-/// Split text into chunks respecting sentence boundaries.
+/// Protected region that should not be split across chunks.
+struct ProtectedRegion {
+    start: usize,
+    end: usize,
+    placeholder: String,
+    original: String,
+}
+
+/// Find all URLs, code blocks, and reference entries in text.
+/// Returns (cleaned_text, regions) where regions can restore originals.
+fn protect_regions(text: &str) -> (String, Vec<ProtectedRegion>) {
+    let mut regions = Vec::new();
+    let mut result = text.to_owned();
+    let mut counter = 0;
+
+    // Protect fenced code blocks: ```...```
+    while let Some(start) = result.find("```") {
+        if let Some(end_offset) = result[start + 3..].find("```") {
+            let end = start + 3 + end_offset + 3;
+            let original = result[start..end].to_owned();
+            let placeholder = format!("__CODE_BLOCK_{counter}__");
+            counter += 1;
+            regions.push(ProtectedRegion {
+                start,
+                end,
+                placeholder: placeholder.clone(),
+                original,
+            });
+            result = format!("{}{}{}", &result[..start], placeholder, &result[end..]);
+        } else {
+            break;
+        }
+    }
+
+    // Protect URLs: http(s)://... until whitespace or closing paren/bracket
+    let url_pattern = regex_lite::Regex::new(r"https?://[^\s\)\]>]+").unwrap();
+    let url_matches: Vec<(usize, usize, String)> = url_pattern
+        .find_iter(&result)
+        .map(|m| (m.start(), m.end(), m.as_str().to_owned()))
+        .collect();
+    // Replace in reverse order to preserve byte offsets
+    for (start, end, original) in url_matches.into_iter().rev() {
+        let placeholder = format!("__URL_{counter}__");
+        counter += 1;
+        regions.push(ProtectedRegion {
+            start,
+            end,
+            placeholder: placeholder.clone(),
+            original,
+        });
+        result = format!("{}{}{}", &result[..start], placeholder, &result[end..]);
+    }
+
+    (result, regions)
+}
+
+/// Restore protected regions in chunked text.
+fn restore_regions(text: &str, regions: &[ProtectedRegion]) -> String {
+    let mut result = text.to_owned();
+    for region in regions {
+        result = result.replace(&region.placeholder, &region.original);
+    }
+    result
+}
+
+/// Split text into chunks respecting sentence and structure boundaries.
 ///
 /// Strategy:
-/// 1. Split on paragraph breaks (`\n\n`) first
-/// 2. If a paragraph exceeds `target_size`, split on sentence boundaries (`. `)
-/// 3. Merge small consecutive paragraphs up to `target_size`
-/// 4. Add `overlap` chars from the previous chunk as prefix
+/// 1. Protect URLs and code blocks from being split (ADR: structure-aware chunking)
+/// 2. Split on paragraph breaks (`\n\n`) first
+/// 3. If a paragraph exceeds `target_size`, split on sentence boundaries (`. `)
+/// 4. Merge small consecutive paragraphs up to `target_size`
+/// 5. Add `overlap` chars from the previous chunk as prefix
+/// 6. Restore protected regions in final chunks
 pub fn chunk_text(text: &str, config: &ChunkerConfig) -> Vec<Chunk> {
+    if text.is_empty() {
+        return Vec::new();
+    }
+
+    // Phase 0: Protect URLs and code blocks
+    let (protected_text, regions) = protect_regions(text);
+    let chunks = chunk_text_inner(&protected_text, config);
+
+    // Restore protected content in each chunk
+    chunks
+        .into_iter()
+        .map(|mut c| {
+            c.text = restore_regions(&c.text, &regions);
+            c
+        })
+        .collect()
+}
+
+/// Inner chunking logic operating on protected text.
+fn chunk_text_inner(text: &str, config: &ChunkerConfig) -> Vec<Chunk> {
     if text.is_empty() {
         return Vec::new();
     }

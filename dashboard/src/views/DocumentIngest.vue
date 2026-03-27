@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import {
-  NCard, NSpace, NSelect, NRadioGroup, NRadioButton,
+  NCard, NSpace,
   NInput, NButton, NTag, NAlert,
   NStatistic, NGrid, NGi, NCollapse, NCollapseItem,
 } from 'naive-ui'
@@ -55,38 +55,6 @@ function clearAll() {
     <NSpace align="center" :size="16">
       <h2 style="margin: 0; color: #e6edf3">Document Ingest</h2>
     </NSpace>
-
-    <!-- Config -->
-    <NCard title="Configuration" size="small">
-      <NSpace :size="16" align="center">
-        <div>
-          <div style="color: #999; font-size: 12px; margin-bottom: 4px">Agent</div>
-          <NSelect
-            v-model:value="selectedAgent"
-            :options="agents.map(a => ({ label: a, value: a }))"
-            style="width: 150px"
-            size="small"
-          />
-        </div>
-        <div>
-          <div style="color: #999; font-size: 12px; margin-bottom: 4px">Scope</div>
-          <NRadioGroup v-model:value="selectedScope" size="small">
-            <NRadioButton value="private">Private</NRadioButton>
-            <NRadioButton value="shared">Shared</NRadioButton>
-          </NRadioGroup>
-        </div>
-        <!-- Tags 由系统自动抽取，不再需要手动输入 -->
-        <!-- <div>
-          <div style="color: #999; font-size: 12px; margin-bottom: 4px">Tags (comma-separated)</div>
-          <NInput
-            v-model:value="tagsInput"
-            placeholder="e.g. rust, async, tutorial"
-            style="width: 250px"
-            size="small"
-          />
-        </div> -->
-      </NSpace>
-    </NCard>
 
     <!-- Input -->
     <NCard title="Document Text" size="small">

@@ -1,15 +1,15 @@
 # UMMS Configuration
 # All values shown are defaults. Uncomment and modify to override.
 
-# [cache.l0]
-# max_capacity = 50
-# eviction = "fifo"
-# session_aware = false
+[cache.l0]
+max_capacity = 50
+eviction = "fifo"
+session_aware = true
 
-# [cache.l1]
-# max_capacity = 200
-# eviction = "lru"
-# session_aware = true
+[cache.l1]
+max_capacity = 200
+eviction = "lru"
+session_aware = true
 
 # [promotion]
 # min_importance = 0.7

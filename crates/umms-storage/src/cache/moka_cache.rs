@@ -32,19 +32,54 @@ pub struct MokaMemoryCache {
 impl MokaMemoryCache {
     /// Create a new cache with default configuration.
     ///
-    /// - L0: capacity 1000, TTL 30s
-    /// - L1: capacity 100, TTI 300s
+    /// ADR-009: capacity-driven eviction, no time-based expiry by default.
+    /// - L0: capacity 50, pure capacity eviction (FIFO via insertion order)
+    /// - L1: capacity 200, LRU eviction, session-aware (no time-based expiry)
     #[must_use]
     pub fn new() -> Self {
+        // Pure capacity-driven: no TTL/TTI, entries only evicted when capacity exceeded
         let l0 = Cache::builder()
-            .max_capacity(1000)
-            .time_to_live(Duration::from_secs(30))
+            .max_capacity(50)
             .build();
 
         let l1 = Cache::builder()
-            .max_capacity(100)
-            .time_to_idle(Duration::from_secs(300))
+            .max_capacity(200)
             .build();
+
+        Self { l0, l1 }
+    }
+
+    /// Create a cache from configuration (ADR-009).
+    ///
+    /// When `session_aware` is true, no time-based expiry is applied —
+    /// entries persist until the session closes or capacity eviction kicks in.
+    #[must_use]
+    pub fn from_config(l0_cfg: &umms_core::config::CacheLayerConfig, l1_cfg: &umms_core::config::CacheLayerConfig) -> Self {
+        let l0 = if l0_cfg.session_aware {
+            // Session-aware: capacity-only eviction, no TTL
+            Cache::builder()
+                .max_capacity(l0_cfg.max_capacity)
+                .build()
+        } else {
+            // Legacy: 30s TTL for sensory buffer
+            Cache::builder()
+                .max_capacity(l0_cfg.max_capacity)
+                .time_to_live(Duration::from_secs(30))
+                .build()
+        };
+
+        let l1 = if l1_cfg.session_aware {
+            // Session-aware: capacity-only eviction, no TTI
+            Cache::builder()
+                .max_capacity(l1_cfg.max_capacity)
+                .build()
+        } else {
+            // Legacy: 5min TTI for working memory
+            Cache::builder()
+                .max_capacity(l1_cfg.max_capacity)
+                .time_to_idle(Duration::from_secs(300))
+                .build()
+        };
 
         Self { l0, l1 }
     }
