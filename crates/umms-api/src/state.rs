@@ -14,7 +14,7 @@ use umms_model::ModelPool;
 use umms_observe::AuditLog;
 use umms_persona::{DiaryStore, PersonaStore};
 
-use crate::prompt::PromptEngine;
+use crate::prompt::{PromptEngine, PromptStore};
 use crate::session::SessionStore;
 use umms_retriever::pipeline::RetrievalPipeline;
 use umms_retriever::recall::Bm25Index;
@@ -97,6 +97,8 @@ pub struct AppState {
     pub session_store: Arc<SessionStore>,
     /// Centralised prompt construction engine.
     pub prompt_engine: PromptEngine,
+    /// SQLite-backed prompt configuration store (three-mode system).
+    pub prompt_store: Arc<PromptStore>,
     pub metrics_registry: prometheus_client::registry::Registry,
     pub started_at: Instant,
     pub config: AppConfig,
@@ -245,6 +247,14 @@ impl AppState {
         // Prompt engine (with default chat template)
         let prompt_engine = PromptEngine::with_defaults();
 
+        // Prompt store (three-mode prompt system)
+        let prompt_store = Arc::new(
+            PromptStore::new(config.data_dir.join("prompts.sqlite")).map_err(|e| {
+                UmmsError::Config(format!("prompt store init failed: {e}"))
+            })?,
+        );
+        tracing::info!("Prompt store initialised");
+
         // Retrieval pipeline (requires encoder for query encoding)
         let retriever = model_pool.as_ref().map(|pool| {
             let enc_arc: Arc<dyn Encoder> = Arc::clone(pool) as Arc<dyn Encoder>;
@@ -291,6 +301,7 @@ impl AppState {
             diary_store,
             session_store,
             prompt_engine,
+            prompt_store,
             metrics_registry,
             started_at: Instant::now(),
             config,

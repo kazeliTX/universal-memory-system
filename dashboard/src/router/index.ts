@@ -53,6 +53,11 @@ const router = createRouter({
       name: 'traces',
       component: () => import('@/views/ModelTraces.vue'),
     },
+    {
+      path: '/prompts',
+      name: 'prompts',
+      component: () => import('@/views/PromptEditor.vue'),
+    },
   ],
 })
 

@@ -472,3 +472,42 @@ export interface TraceSummaryResponse {
   avg_latency_ms: number
   p99_latency_ms: number
 }
+
+// ---------------------------------------------------------------------------
+// Prompt Editor
+// ---------------------------------------------------------------------------
+
+export type PromptMode = 'original' | 'modular' | 'preset'
+
+export interface PromptBlock {
+  id: string
+  name: string
+  block_type: string
+  content: string
+  variants: string[]
+  selected_variant: number
+  enabled: boolean
+  order: number
+}
+
+export interface AgentPromptConfig {
+  agent_id: string
+  mode: PromptMode
+  original_prompt: string
+  blocks: PromptBlock[]
+  preset_path?: string
+  preset_content?: string
+  updated_at: string
+}
+
+export interface PromptWarehouse {
+  name: string
+  blocks: PromptBlock[]
+  is_global: boolean
+}
+
+export interface PromptVariable {
+  name: string
+  description: string
+  resolver: string
+}

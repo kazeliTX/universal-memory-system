@@ -14,6 +14,7 @@ use umms_core::types::AgentId;
 use umms_observe::{AuditEventBuilder, AuditEventType};
 
 use crate::prompt::diary_generator::DiaryGenerator;
+use crate::prompt::engine::PromptEngine;
 use crate::response::{ChatResponse, ChatSource};
 use crate::session::{self, ChatMessage as SessionChatMessage, ChatSession, ChatSourceRecord};
 use crate::AppState;
@@ -207,18 +208,35 @@ pub async fn chat(
             .join("\n")
     };
 
-    // 8. Build prompt via PromptEngine
+    // 8. Build prompt — try new three-mode system first, fall back to legacy
     let mut vars = HashMap::new();
-    vars.insert("system_prompt".to_owned(), system_prompt);
+    vars.insert("system_prompt".to_owned(), system_prompt.clone());
     vars.insert("memory_content".to_owned(), memory_content);
     vars.insert("diary_content".to_owned(), diary_content);
     vars.insert("history_content".to_owned(), history_content);
     vars.insert("user_message".to_owned(), body.message.clone());
 
-    let full_prompt = state
-        .prompt_engine
-        .build("chat", &vars)
-        .map_err(|e| format!("Prompt build failed: {e}"))?;
+    // Runtime variables for the new prompt system
+    let agent_name = persona.as_ref().map(|p| p.name.clone()).unwrap_or_else(|| body.agent_id.clone());
+    let agent_role = persona.as_ref().map(|p| p.role.clone()).unwrap_or_default();
+    vars.insert("AgentName".to_owned(), agent_name);
+    vars.insert("AgentRole".to_owned(), agent_role);
+    vars.insert("DateTime".to_owned(), Utc::now().format("%Y-%m-%d %H:%M").to_string());
+    vars.insert("SessionTitle".to_owned(), current_session.title.clone());
+
+    let full_prompt = match state.prompt_store.get_prompt_config(&body.agent_id).await {
+        Ok(Some(prompt_config)) => {
+            PromptEngine::build_prompt(&prompt_config, &vars)
+                .map_err(|e| format!("Prompt build failed: {e}"))?
+        }
+        _ => {
+            // Fallback to legacy template engine
+            state
+                .prompt_engine
+                .build("chat", &vars)
+                .map_err(|e| format!("Prompt build failed: {e}"))?
+        }
+    };
 
     // 9. Generate response
     let pool = state

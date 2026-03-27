@@ -570,6 +570,75 @@ impl From<umms_persona::DiaryEntry> for DiaryEntryResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Prompt System
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct AgentPromptConfigResponse {
+    pub agent_id: String,
+    pub mode: String,
+    pub original_prompt: String,
+    pub blocks: Vec<PromptBlockResponse>,
+    pub preset_path: Option<String>,
+    pub preset_content: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PromptBlockResponse {
+    pub id: String,
+    pub name: String,
+    pub block_type: String,
+    pub content: String,
+    pub variants: Vec<String>,
+    pub selected_variant: usize,
+    pub enabled: bool,
+    pub order: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PromptWarehouseResponse {
+    pub name: String,
+    pub blocks: Vec<PromptBlockResponse>,
+    pub is_global: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PromptVariableResponse {
+    pub name: String,
+    pub description: String,
+    pub resolver: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PromptPreviewResponse {
+    pub resolved_prompt: String,
+    pub mode: String,
+    pub block_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PromptWarehouseListResponse {
+    pub warehouses: Vec<PromptWarehouseResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PromptVariableListResponse {
+    pub variables: Vec<PromptVariableResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PresetListResponse {
+    pub presets: Vec<PresetFileResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PresetFileResponse {
+    pub filename: String,
+    pub content: String,
+}
+
+// ---------------------------------------------------------------------------
 // Chat
 // ---------------------------------------------------------------------------
 

@@ -84,6 +84,22 @@ async fn main() {
             commands::persona::delete_agent,
             // Chat
             commands::chat::chat,
+            // Prompts (three-mode system)
+            commands::prompts::get_prompt_config,
+            commands::prompts::save_prompt_config,
+            commands::prompts::switch_prompt_mode,
+            commands::prompts::add_block,
+            commands::prompts::update_block,
+            commands::prompts::delete_block,
+            commands::prompts::reorder_blocks,
+            commands::prompts::add_variant,
+            commands::prompts::select_variant,
+            commands::prompts::list_warehouses,
+            commands::prompts::get_warehouse,
+            commands::prompts::save_warehouse,
+            commands::prompts::delete_warehouse,
+            commands::prompts::list_variables,
+            commands::prompts::preview_prompt,
             // Sessions
             commands::sessions::list_sessions,
             commands::sessions::get_session,

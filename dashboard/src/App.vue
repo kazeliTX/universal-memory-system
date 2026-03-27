@@ -22,6 +22,7 @@ import {
   SyncOutline,
   PeopleOutline,
   AnalyticsOutline,
+  CreateOutline,
 } from '@vicons/ionicons5'
 import { NIcon } from 'naive-ui'
 
@@ -81,6 +82,11 @@ const menuOptions: MenuOption[] = [
     label: () => h(RouterLink, { to: '/traces' }, { default: () => '模型追踪' }),
     key: 'traces',
     icon: renderIcon(AnalyticsOutline),
+  },
+  {
+    label: () => h(RouterLink, { to: '/prompts' }, { default: () => 'Prompt编辑器' }),
+    key: 'prompts',
+    icon: renderIcon(CreateOutline),
   },
 ]
 

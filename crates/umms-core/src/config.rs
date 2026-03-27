@@ -29,6 +29,7 @@ pub struct UmmsConfig {
     pub scheduler: SchedulerConfig,
     pub chat: ChatConfig,
     pub diary: DiaryConfig,
+    pub prompt: PromptConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -401,6 +402,35 @@ impl Default for DiaryConfig {
             auto_generate: true,
             db: "diary.sqlite".to_owned(),
             max_entries_per_agent: 200,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Prompt system
+// ---------------------------------------------------------------------------
+
+/// Configuration for the VCP-inspired three-mode prompt system.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct PromptConfig {
+    /// Default prompt editing mode: "original", "modular", or "preset".
+    pub default_mode: String,
+    /// Directory for preset template files (relative to data_dir).
+    pub presets_dir: String,
+    /// Maximum number of blocks per agent.
+    pub max_blocks: usize,
+    /// Maximum number of variants per block.
+    pub max_variants_per_block: usize,
+}
+
+impl Default for PromptConfig {
+    fn default() -> Self {
+        Self {
+            default_mode: "modular".to_owned(),
+            presets_dir: "presets".to_owned(),
+            max_blocks: 50,
+            max_variants_per_block: 10,
         }
     }
 }

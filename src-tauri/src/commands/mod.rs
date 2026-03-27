@@ -24,5 +24,6 @@ pub mod persona;
 pub mod system;
 pub mod files;
 pub mod sessions;
+pub mod prompts;
 pub mod tags;
 pub mod traces;

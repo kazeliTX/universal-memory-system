@@ -21,4 +21,5 @@ pub mod sessions;
 pub mod system;
 pub mod tags;
 pub mod traces;
+pub mod prompts;
 pub mod ws;
