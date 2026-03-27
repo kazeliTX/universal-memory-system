@@ -59,6 +59,11 @@ pub async fn ingest_document(
         chunker_config,
     );
 
+    // Wire up LLM-powered skeleton extraction if model pool is available
+    if let Some(ref pool) = state.model_pool {
+        pipeline = pipeline.with_model_pool(Arc::clone(pool));
+    }
+
     // Wire up tag extraction if tag system is enabled
     if umms_config.tag.enabled && umms_config.tag.auto_extract {
         if let Some(ref tag_store) = state.tag_store {

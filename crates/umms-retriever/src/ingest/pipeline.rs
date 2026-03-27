@@ -10,11 +10,12 @@ use tracing::{info, instrument, warn};
 use umms_core::error::Result;
 use umms_core::traits::{Encoder, VectorStore};
 use umms_core::types::{AgentId, IsolationScope, MemoryEntryBuilder, MemoryLayer, Modality};
+use umms_encoder::ModelPool;
 
 use crate::recall::Bm25Index;
 
 use super::chunker::{ChunkerConfig, chunk_text};
-use super::skeleton::DocSkeleton;
+use super::skeleton::{self, DocSkeleton};
 use super::tag_extractor::TagExtractor;
 
 /// Result of ingesting a document.
@@ -69,6 +70,10 @@ pub struct IngestPipeline {
     bm25: Arc<Bm25Index>,
     chunker_config: ChunkerConfig,
     tag_extractor: Option<Arc<TagExtractor>>,
+    /// Optional model pool for LLM-powered skeleton extraction.
+    /// When `Some`, the pipeline uses [`skeleton::extract_skeleton_llm`] instead
+    /// of the heuristic fallback.
+    model_pool: Option<Arc<ModelPool>>,
 }
 
 impl IngestPipeline {
@@ -84,12 +89,22 @@ impl IngestPipeline {
             bm25,
             chunker_config,
             tag_extractor: None,
+            model_pool: None,
         }
     }
 
     /// Attach a tag extractor to the pipeline for automatic tag extraction.
     pub fn with_tag_extractor(mut self, extractor: Arc<TagExtractor>) -> Self {
         self.tag_extractor = Some(extractor);
+        self
+    }
+
+    /// Attach a model pool for LLM-powered skeleton extraction.
+    ///
+    /// When set, [`Self::ingest`] will use the generative model to extract
+    /// document structure instead of the heuristic fallback.
+    pub fn with_model_pool(mut self, pool: Arc<ModelPool>) -> Self {
+        self.model_pool = Some(pool);
         self
     }
 
@@ -129,9 +144,24 @@ impl IngestPipeline {
 
         info!(chunks = chunks.len(), "Document chunked");
 
-        // Stage 2: Skeleton (use provided or generate fallback)
+        // Stage 2: Skeleton (use provided, LLM, or heuristic fallback)
         let skel_start = std::time::Instant::now();
-        let skel = skeleton.unwrap_or_else(|| DocSkeleton::fallback(text, chunks.len()));
+        let skel = if let Some(s) = skeleton {
+            s
+        } else if let Some(ref pool) = self.model_pool {
+            match skeleton::extract_skeleton_llm(text, chunks.len(), pool).await {
+                Ok(s) => {
+                    info!(title = %s.title, entities = s.key_entities.len(), sections = s.sections.len(), "LLM skeleton extracted");
+                    s
+                }
+                Err(e) => {
+                    warn!("LLM skeleton extraction error: {e}, using fallback");
+                    DocSkeleton::fallback(text, chunks.len())
+                }
+            }
+        } else {
+            DocSkeleton::fallback(text, chunks.len())
+        };
         latency.skeleton_ms = skel_start.elapsed().as_millis() as u64;
 
         // Stage 2.5: Tag extraction (if extractor is available)
