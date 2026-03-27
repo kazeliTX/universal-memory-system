@@ -179,9 +179,10 @@ impl CozoGraphStore {
 
     /// Create relations (tables) if they don't already exist.
     fn ensure_relations(&self) -> std::result::Result<(), UmmsError> {
-        self.db.run_script(
+        // :create will error if the relation already exists — that's fine.
+        let _ = self.db.run_script(
             r"
-            :ensure nodes {
+            :create nodes {
                 id: String
                 =>
                 agent_id: String,
@@ -195,11 +196,11 @@ impl CozoGraphStore {
             ",
             Default::default(),
             ScriptMutability::Mutable,
-        ).map_err(|e| cozo_err(&e))?;
+        );
 
-        self.db.run_script(
+        let _ = self.db.run_script(
             r"
-            :ensure edges {
+            :create edges {
                 id: String
                 =>
                 source_id: String,
@@ -213,6 +214,19 @@ impl CozoGraphStore {
             Default::default(),
             ScriptMutability::Mutable,
         );
+
+        // Verify relations exist by querying them
+        self.db.run_script(
+            r"?[count(id)] := *nodes{id}",
+            Default::default(),
+            ScriptMutability::Immutable,
+        ).map_err(|e| {
+            UmmsError::Storage(StorageError::ConnectionFailed {
+                backend: "cozo-graph".into(),
+                reason: format!("nodes relation not available: {e}"),
+            })
+        })?;
+
         Ok(())
     }
 }

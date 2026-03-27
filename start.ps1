@@ -38,7 +38,8 @@ function Start-Core {
     Write-Host "  [..] Starting Core Service (port 8720)..." -ForegroundColor Cyan
     Start-Process -FilePath "cargo" -ArgumentList "run","-p","umms-server" -WorkingDirectory $ProjectRoot -WindowStyle Minimized
 
-    for ($i = 0; $i -lt 30; $i++) {
+    # First build can take 60-90s, subsequent starts are fast
+    for ($i = 0; $i -lt 120; $i++) {
         Start-Sleep -Seconds 1
         try {
             $r = Invoke-WebRequest -Uri "http://127.0.0.1:8720/api/health" -UseBasicParsing -TimeoutSec 2
@@ -47,7 +48,7 @@ function Start-Core {
         }
         catch { }
     }
-    Write-Host "  [!!] Core Service startup timeout (30s)" -ForegroundColor Red
+    Write-Host "  [!!] Core Service startup timeout (120s)" -ForegroundColor Red
 }
 
 function Start-Dashboard {
@@ -105,5 +106,4 @@ if ($Mode -eq "all" -or $Mode -eq "chat") {
     Write-Host "  Chat:      http://127.0.0.1:5174" -ForegroundColor White
 }
 Write-Host "  ----------------------------------------" -ForegroundColor DarkGray
-Write-Host "  Stop all:  .\stop.ps1" -ForegroundColor DarkGray
 Write-Host ""
