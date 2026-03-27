@@ -267,7 +267,7 @@ impl Default for ModelPoolConfig {
                 ModelConfig {
                     id: "gemini-flash".to_owned(),
                     provider: "gemini".to_owned(),
-                    model_name: "gemini-2.0-flash".to_owned(),
+                    model_name: "gemini-2.5-flash".to_owned(),
                     api_key_env: "GEMINI_API_KEY".to_owned(),
                     tasks: vec![
                         "generation".to_owned(),

@@ -71,7 +71,7 @@ pub struct ModelInfo {
     pub id: String,
     /// Provider name (e.g., "gemini", "openai", "local").
     pub provider: String,
-    /// Actual model name (e.g., "gemini-embedding-001", "gemini-2.0-flash").
+    /// Actual model name (e.g., "gemini-embedding-001", "gemini-2.5-flash").
     pub model_name: String,
     /// What tasks this model supports.
     pub tasks: Vec<ModelTask>,

@@ -67,7 +67,7 @@ max_retries = 2
 [[model_pool.models]]
 id = "gemini-flash"
 provider = "gemini"
-model_name = "gemini-2.0-flash"
+model_name = "gemini-2.5-flash"
 api_key_env = "GEMINI_API_KEY"
 tasks = ["generation", "entity_extraction", "chat"]
 max_tokens = 8192

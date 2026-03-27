@@ -64,6 +64,10 @@ function updateFilterOptions(s: TraceSummaryResponse) {
 
 const traceColumns: DataTableColumns<ModelTraceResponse> = [
   {
+    type: 'expand',
+    renderExpand,
+  },
+  {
     title: '时间戳',
     key: 'timestamp',
     width: 180,
@@ -335,7 +339,6 @@ onUnmounted(() => {
           :row-class-name="rowClassName"
           :expanded-row-keys="expandedRowKeys"
           @update:expanded-row-keys="(keys: Array<string | number>) => (expandedRowKeys = keys.map(String))"
-          :render-expand="renderExpand"
         />
         <NEmpty v-else description="暂无追踪记录" />
       </NCard>

@@ -62,21 +62,26 @@ pub async fn chat(
             )
         });
 
-    // 3. Retrieve relevant memories
+    // 3. Retrieve relevant memories (skip for short greetings/simple messages)
     let mut sources = Vec::new();
-    if let Some(ref retriever) = state.retriever {
-        if let Ok(pr) = retriever.retrieve_with_sources(&body.message, &agent_id).await {
-            sources = pr
-                .retrieval
-                .entries
-                .iter()
-                .take(5)
-                .map(|sm| ChatSource {
-                    content: sm.entry.content_text.clone().unwrap_or_default(),
-                    score: sm.score,
-                    memory_id: sm.entry.id.to_string(),
-                })
-                .collect();
+    let should_retrieve = body.message.chars().count() >= 4
+        && !is_greeting(&body.message);
+
+    if should_retrieve {
+        if let Some(ref retriever) = state.retriever {
+            if let Ok(pr) = retriever.retrieve_with_sources(&body.message, &agent_id).await {
+                sources = pr
+                    .retrieval
+                    .entries
+                    .iter()
+                    .take(5)
+                    .map(|sm| ChatSource {
+                        content: sm.entry.content_text.clone().unwrap_or_default(),
+                        score: sm.score,
+                        memory_id: sm.entry.id.to_string(),
+                    })
+                    .collect();
+            }
         }
     }
 
@@ -141,4 +146,16 @@ pub async fn chat(
         sources,
         latency_ms,
     }))
+}
+
+/// Check if a message is a simple greeting that doesn't need memory retrieval.
+fn is_greeting(msg: &str) -> bool {
+    let normalized = msg.trim().to_lowercase();
+    const GREETINGS: &[&str] = &[
+        "你好", "您好", "hi", "hello", "hey", "嗨",
+        "谢谢", "感谢", "thanks", "thank you",
+        "再见", "拜拜", "bye", "goodbye",
+        "好的", "ok", "okay", "嗯", "是的",
+    ];
+    GREETINGS.iter().any(|g| normalized == *g || normalized.starts_with(g))
 }
