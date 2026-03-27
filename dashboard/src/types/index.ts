@@ -302,6 +302,39 @@ export interface CooccurrenceResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Consolidation (M4)
+// ---------------------------------------------------------------------------
+
+export interface ConsolidationReportResponse {
+  agent_id: string
+  decay: DecayResultResponse
+  evolution: EvolutionResultResponse
+  promotion: PromoteResultResponse
+  total_ms: number
+  timestamp: string
+}
+
+export interface DecayResultResponse {
+  scanned: number
+  updated: number
+  archived: number
+  elapsed_ms: number
+}
+
+export interface EvolutionResultResponse {
+  pairs_scanned: number
+  nodes_merged: number
+  edges_strengthened: number
+  elapsed_ms: number
+}
+
+export interface PromoteResultResponse {
+  scanned: number
+  promoted: number
+  elapsed_ms: number
+}
+
+// ---------------------------------------------------------------------------
 // EPA
 // ---------------------------------------------------------------------------
 

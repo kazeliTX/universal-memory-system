@@ -28,6 +28,7 @@ import type {
   TagSearchResponse,
   CooccurrenceResponse,
   EpaAnalyzeResponse,
+  ConsolidationReportResponse,
 } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -291,6 +292,23 @@ export async function epaAnalyze(
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
   return res.json()
 }
+
+// ---------------------------------------------------------------------------
+// Consolidation
+// ---------------------------------------------------------------------------
+
+export async function runConsolidation(agentId: string): Promise<ConsolidationReportResponse> {
+  if (IS_TAURI) return tauriInvoke('run_consolidation', { agentId })
+  const res = await fetch(`/api/consolidation/run/${agentId}`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
+// Encoder (continued)
+// ---------------------------------------------------------------------------
 
 export async function encodeText(text: string): Promise<{ vector: number[] }> {
   if (IS_TAURI) {

@@ -38,6 +38,11 @@ const router = createRouter({
       name: 'benchmarks',
       component: () => import('@/views/Benchmarks.vue'),
     },
+    {
+      path: '/consolidation',
+      name: 'consolidation',
+      component: () => import('@/views/Consolidation.vue'),
+    },
   ],
 })
 

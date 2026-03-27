@@ -33,6 +33,9 @@ axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+# Timestamps
+chrono.workspace = true
+
 # Tracing
 tracing.workspace = true
 

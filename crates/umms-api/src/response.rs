@@ -344,6 +344,43 @@ pub struct ActivatedTagResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Consolidation (M4)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct ConsolidationReportResponse {
+    pub agent_id: String,
+    pub decay: DecayResultResponse,
+    pub evolution: EvolutionResultResponse,
+    pub promotion: PromoteResultResponse,
+    pub total_ms: u64,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DecayResultResponse {
+    pub scanned: usize,
+    pub updated: usize,
+    pub archived: usize,
+    pub elapsed_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EvolutionResultResponse {
+    pub pairs_scanned: usize,
+    pub nodes_merged: usize,
+    pub edges_strengthened: usize,
+    pub elapsed_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PromoteResultResponse {
+    pub scanned: usize,
+    pub promoted: usize,
+    pub elapsed_ms: u64,
+}
+
+// ---------------------------------------------------------------------------
 // Seed
 // ---------------------------------------------------------------------------
 

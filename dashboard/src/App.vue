@@ -19,6 +19,7 @@ import {
   SpeedometerOutline,
   CloudUploadOutline,
   PricetagsOutline,
+  SyncOutline,
 } from '@vicons/ionicons5'
 import { NIcon } from 'naive-ui'
 
@@ -63,6 +64,11 @@ const menuOptions: MenuOption[] = [
     label: () => h(RouterLink, { to: '/benchmarks' }, { default: () => 'Benchmarks' }),
     key: 'benchmarks',
     icon: renderIcon(SpeedometerOutline),
+  },
+  {
+    label: () => h(RouterLink, { to: '/consolidation' }, { default: () => 'Consolidation' }),
+    key: 'consolidation',
+    icon: renderIcon(SyncOutline),
   },
 ]
 

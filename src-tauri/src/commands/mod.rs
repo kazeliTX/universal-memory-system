@@ -14,6 +14,7 @@
 pub mod memory;
 pub mod graph;
 pub mod agent;
+pub mod consolidation;
 pub mod audit;
 pub mod encoder;
 pub mod ingest;

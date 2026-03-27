@@ -91,6 +91,8 @@ async fn main() {
             commands::tags::search_tags,
             commands::tags::tag_cooccurrences,
             commands::tags::epa_analyze,
+            // Consolidation
+            commands::consolidation::run_consolidation,
         ])
         .run(tauri::generate_context!())
         .expect("error running UMMS desktop");

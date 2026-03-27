@@ -112,6 +112,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         // EPA
         .route("/api/epa/analyze", post(handlers::epa::epa_analyze))
+        // Consolidation
+        .route(
+            "/api/consolidation/run/{agent_id}",
+            post(handlers::consolidation::run_consolidation),
+        )
         // Middleware
         .layer(CorsLayer::permissive())
         .with_state(state)

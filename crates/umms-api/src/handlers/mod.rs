@@ -7,6 +7,7 @@
 pub mod agent;
 pub mod audit;
 pub mod benchmarks;
+pub mod consolidation;
 pub mod encoder;
 pub mod epa;
 pub mod files;
