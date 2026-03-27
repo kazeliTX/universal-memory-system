@@ -62,56 +62,77 @@ pub async fn chat(
             )
         });
 
-    // 3. Retrieve relevant memories (skip for short greetings/simple messages)
+    // 3. Retrieve relevant memories
+    // min_score in the retrieval pipeline handles filtering irrelevant results —
+    // no need for a greeting blocklist. Low-relevance queries simply return empty sources.
     let mut sources = Vec::new();
-    let should_retrieve = body.message.chars().count() >= 4
-        && !is_greeting(&body.message);
-
-    if should_retrieve {
-        if let Some(ref retriever) = state.retriever {
-            if let Ok(pr) = retriever.retrieve_with_sources(&body.message, &agent_id).await {
-                sources = pr
-                    .retrieval
-                    .entries
-                    .iter()
-                    .take(5)
-                    .map(|sm| ChatSource {
-                        content: sm.entry.content_text.clone().unwrap_or_default(),
-                        score: sm.score,
-                        memory_id: sm.entry.id.to_string(),
-                    })
-                    .collect();
-            }
+    if let Some(ref retriever) = state.retriever {
+        if let Ok(pr) = retriever.retrieve_with_sources(&body.message, &agent_id).await {
+            sources = pr
+                .retrieval
+                .entries
+                .iter()
+                .take(5)
+                .map(|sm| ChatSource {
+                    content: sm.entry.content_text.clone().unwrap_or_default(),
+                    score: sm.score,
+                    memory_id: sm.entry.id.to_string(),
+                })
+                .collect();
         }
     }
 
-    // 4. Build prompt
-    let context = if sources.is_empty() {
-        String::new()
+    // 4. Build prompt — LLM-driven retrieval decision (inspired by VCP)
+    //
+    // The LLM decides whether to use memories, not the application layer.
+    // We always provide whatever memories were found (with scores), and instruct
+    // the LLM to ignore irrelevant ones. This avoids maintaining heuristic
+    // blocklists and respects the model's contextual understanding.
+    let memory_section = if sources.is_empty() {
+        "【记忆系统】当前未检索到相关记忆。请直接回答用户。".to_owned()
     } else {
         let ctx: Vec<String> = sources
             .iter()
             .enumerate()
-            .map(|(i, s)| format!("[记忆 {}] (相关度: {:.2})\n{}", i + 1, s.score, s.content))
+            .map(|(i, s)| {
+                format!(
+                    "[记忆 {}] (相关度: {:.0}%)\n{}",
+                    i + 1,
+                    s.score * 100.0,
+                    s.content
+                )
+            })
             .collect();
-        format!("\n\n相关记忆:\n{}\n", ctx.join("\n\n"))
+        format!(
+            "【记忆系统】以下是从你的记忆库中检索到的内容（按相关度排序）。\n\
+             规则：\n\
+             - 如果记忆与用户当前问题高度相关（相关度 > 60%），请自然地融入回答中\n\
+             - 如果记忆与当前问题无关，请完全忽略它们，直接回答用户\n\
+             - 不要提及记忆系统或相关度等系统术语\n\
+             - 引用记忆中的知识时，像是你本来就知道的一样自然表达\n\n{}",
+            ctx.join("\n\n")
+        )
     };
 
-    let history = body
-        .history
-        .iter()
-        .map(|m| {
-            format!(
-                "{}: {}",
-                if m.role == "user" { "用户" } else { "助手" },
-                m.content
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let history_section = if body.history.is_empty() {
+        String::new()
+    } else {
+        let h: Vec<String> = body
+            .history
+            .iter()
+            .map(|m| {
+                format!(
+                    "{}: {}",
+                    if m.role == "user" { "用户" } else { "助手" },
+                    m.content
+                )
+            })
+            .collect();
+        format!("\n对话历史:\n{}\n", h.join("\n"))
+    };
 
     let full_prompt = format!(
-        "{system_prompt}\n\n{context}\n对话历史:\n{history}\n\n用户: {}\n\n请用中文回答。基于上述记忆上下文回答用户问题。如果记忆中没有相关信息，请如实说明。",
+        "{system_prompt}\n\n{memory_section}\n{history_section}\n用户: {}\n\n请用中文回答。",
         body.message
     );
 
@@ -146,16 +167,4 @@ pub async fn chat(
         sources,
         latency_ms,
     }))
-}
-
-/// Check if a message is a simple greeting that doesn't need memory retrieval.
-fn is_greeting(msg: &str) -> bool {
-    let normalized = msg.trim().to_lowercase();
-    const GREETINGS: &[&str] = &[
-        "你好", "您好", "hi", "hello", "hey", "嗨",
-        "谢谢", "感谢", "thanks", "thank you",
-        "再见", "拜拜", "bye", "goodbye",
-        "好的", "ok", "okay", "嗯", "是的",
-    ];
-    GREETINGS.iter().any(|g| normalized == *g || normalized.starts_with(g))
 }
