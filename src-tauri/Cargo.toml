@@ -19,6 +19,7 @@ tauri = { version = "2", features = [] }
 # Internal crates
 umms-api.workspace = true
 umms-core.workspace = true
+umms-consolidation.workspace = true
 umms-storage.workspace = true
 umms-retriever.workspace = true
 umms-observe.workspace = true

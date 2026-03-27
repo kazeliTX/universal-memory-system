@@ -10,7 +10,7 @@ use chrono::Utc;
 use serde::Serialize;
 use tracing::{info, instrument};
 
-use umms_core::config::{DecayConfig, PromotionConfig};
+use umms_core::config::{DecayConfig, GraphEvolutionConfig, PromotionConfig};
 use umms_core::error::Result;
 use umms_core::traits::{KnowledgeGraphStore, VectorStore};
 use umms_core::types::AgentId;
@@ -58,6 +58,22 @@ impl ConsolidationScheduler {
         Self {
             decay_engine: DecayEngine::new(decay_config),
             graph_evolution: GraphEvolution::with_defaults(),
+            auto_promoter: AutoPromoter::new(promotion_config),
+        }
+    }
+
+    /// Create a scheduler from full config (decay + graph evolution + promotion).
+    pub fn from_config(
+        decay_config: DecayConfig,
+        graph_evo_config: GraphEvolutionConfig,
+        promotion_config: PromotionConfig,
+    ) -> Self {
+        Self {
+            decay_engine: DecayEngine::new(decay_config),
+            graph_evolution: GraphEvolution::new(
+                graph_evo_config.min_similarity,
+                graph_evo_config.max_merge_per_run,
+            ),
             auto_promoter: AutoPromoter::new(promotion_config),
         }
     }

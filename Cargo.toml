@@ -66,6 +66,7 @@ arrow-array = "57"
 arrow-schema = "57"
 futures = "0.3"
 rusqlite = { version = "0.32", features = ["bundled"] }
+cozo = { version = "0.7", default-features = false, features = ["storage-sled", "rayon"] }
 moka = { version = "0.12", features = ["future"] }
 petgraph = "0.6"
 

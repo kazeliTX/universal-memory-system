@@ -24,6 +24,11 @@ session_aware = true
 # archive_after_days = 90
 # delete_originals = false
 
+# [graph_evolution]
+# min_similarity = 0.8
+# max_merge_per_run = 10
+# edge_boost_factor = 1.1
+
 [encoder]
 provider = "gemini"
 model = "gemini-embedding-001"
@@ -81,7 +86,8 @@ host = "127.0.0.1"
 port = 8720
 
 
-# [storage]
+[storage]
+graph_backend = "cozo"
 # data_dir = ".umms"
 # vector_dir = "vectors"
 # graph_db = "graph.sqlite"

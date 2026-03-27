@@ -16,6 +16,7 @@ pub struct UmmsConfig {
     pub cache: CacheConfig,
     pub promotion: PromotionConfig,
     pub decay: DecayConfig,
+    pub graph_evolution: GraphEvolutionConfig,
     pub encoder: EncoderConfig,
     pub retriever: RetrieverConfig,
     pub storage: StorageConfig,
@@ -95,6 +96,31 @@ pub struct DecayConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Graph Evolution (M4)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct GraphEvolutionConfig {
+    /// Minimum similarity score (0.0..=1.0) for two nodes to be merge candidates.
+    pub min_similarity: f32,
+    /// Maximum number of merges per evolution run (to limit blast radius).
+    pub max_merge_per_run: usize,
+    /// Factor by which frequently co-accessed edge weights are boosted.
+    pub edge_boost_factor: f32,
+}
+
+impl Default for GraphEvolutionConfig {
+    fn default() -> Self {
+        Self {
+            min_similarity: 0.8,
+            max_merge_per_run: 10,
+            edge_boost_factor: 1.1,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Encoder (M2)
 // ---------------------------------------------------------------------------
 
@@ -154,6 +180,8 @@ pub struct StorageConfig {
     pub context_db: String,
     /// Raw file storage directory.
     pub files_dir: String,
+    /// Graph backend: "cozo" (default) or "sqlite".
+    pub graph_backend: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +391,7 @@ impl Default for StorageConfig {
             graph_db: "graph.sqlite".to_owned(),
             context_db: "context.sqlite".to_owned(),
             files_dir: "files".to_owned(),
+            graph_backend: "cozo".to_owned(),
         }
     }
 }

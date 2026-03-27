@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use umms_core::config;
 use umms_core::error::UmmsError;
-use umms_core::traits::{Encoder, TagStore};
+use umms_core::traits::{Encoder, KnowledgeGraphStore, TagStore};
 use umms_encoder::{GeminiConfig, GeminiEncoder, ModelPool};
 use umms_observe::AuditLog;
 use umms_persona::PersonaStore;
@@ -17,7 +17,7 @@ use umms_retriever::pipeline::RetrievalPipeline;
 use umms_retriever::recall::Bm25Index;
 use umms_storage::cache::MokaMemoryCache;
 use umms_storage::file::LocalFileStore;
-use umms_storage::graph::SqliteGraphStore;
+use umms_storage::graph::{CozoGraphStore, SqliteGraphStore};
 use umms_storage::tag::CompositeTagStore;
 use umms_storage::vector::LanceVectorStore;
 
@@ -72,7 +72,7 @@ impl AppConfig {
 pub struct AppState {
     pub cache: MokaMemoryCache,
     pub vector: Arc<LanceVectorStore>,
-    pub graph: Arc<SqliteGraphStore>,
+    pub graph: Arc<dyn KnowledgeGraphStore>,
     pub files: LocalFileStore,
     pub audit: AuditLog,
     /// Encoder is `None` when `GEMINI_API_KEY` is not set (dev mode without API).
@@ -115,7 +115,18 @@ impl AppState {
         )
         .await?);
 
-        let graph = Arc::new(SqliteGraphStore::new(&config.data_dir.join("graph.sqlite"))?);
+        let graph: Arc<dyn KnowledgeGraphStore> =
+            if umms_cfg.storage.graph_backend == "sqlite" {
+                tracing::info!("using SQLite graph backend");
+                Arc::new(SqliteGraphStore::new(
+                    &config.data_dir.join("graph.sqlite"),
+                )?)
+            } else {
+                tracing::info!("using CozoDB graph backend");
+                Arc::new(CozoGraphStore::new(
+                    config.data_dir.join("graph.cozo"),
+                )?)
+            };
 
         let files = LocalFileStore::new(config.data_dir.join("files")).await?;
 
