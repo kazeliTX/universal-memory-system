@@ -532,6 +532,44 @@ impl From<umms_scheduler::TaskExecution> for TaskExecutionResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Diary
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct DiaryEntryResponse {
+    pub id: String,
+    pub agent_id: String,
+    pub category: String,
+    pub content: String,
+    pub confidence: f32,
+    pub source_session_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DiaryListResponse {
+    pub agent_id: String,
+    pub entries: Vec<DiaryEntryResponse>,
+    pub total: usize,
+}
+
+impl From<umms_persona::DiaryEntry> for DiaryEntryResponse {
+    fn from(e: umms_persona::DiaryEntry) -> Self {
+        Self {
+            id: e.id,
+            agent_id: e.agent_id,
+            category: e.category.to_string(),
+            content: e.content,
+            confidence: e.confidence,
+            source_session_id: e.source_session_id,
+            created_at: e.created_at.to_rfc3339(),
+            updated_at: e.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Chat
 // ---------------------------------------------------------------------------
 
@@ -539,6 +577,7 @@ impl From<umms_scheduler::TaskExecution> for TaskExecutionResponse {
 pub struct ChatResponse {
     pub message: String,
     pub agent_id: String,
+    pub session_id: String,
     pub sources: Vec<ChatSource>,
     pub latency_ms: u64,
 }
@@ -548,6 +587,54 @@ pub struct ChatSource {
     pub content: String,
     pub score: f32,
     pub memory_id: String,
+}
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct SessionListResponse {
+    pub sessions: Vec<SessionSummaryResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionSummaryResponse {
+    pub id: String,
+    pub agent_id: String,
+    pub title: String,
+    pub message_count: usize,
+    pub last_message_preview: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionDetailResponse {
+    pub id: String,
+    pub agent_id: String,
+    pub title: String,
+    pub messages: Vec<SessionMessageResponse>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionMessageResponse {
+    pub role: String,
+    pub content: String,
+    pub timestamp: String,
+    pub sources: Vec<ChatSource>,
+    pub latency_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateSessionResponse {
+    pub id: String,
+    pub agent_id: String,
+    pub title: String,
+    pub created_at: String,
 }
 
 // ---------------------------------------------------------------------------

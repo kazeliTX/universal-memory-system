@@ -12,7 +12,10 @@ use umms_core::error::UmmsError;
 use umms_core::traits::{Encoder, KnowledgeGraphStore, TagStore};
 use umms_model::ModelPool;
 use umms_observe::AuditLog;
-use umms_persona::PersonaStore;
+use umms_persona::{DiaryStore, PersonaStore};
+
+use crate::prompt::PromptEngine;
+use crate::session::SessionStore;
 use umms_retriever::pipeline::RetrievalPipeline;
 use umms_retriever::recall::Bm25Index;
 use umms_storage::cache::MokaMemoryCache;
@@ -88,6 +91,12 @@ pub struct AppState {
     pub retriever: Option<RetrievalPipeline>,
     /// Persona store for agent identity management (M7).
     pub persona_store: Arc<PersonaStore>,
+    /// Agent diary store — per-agent user observation notebook.
+    pub diary_store: Arc<DiaryStore>,
+    /// Chat session store — persistent conversation history.
+    pub session_store: Arc<SessionStore>,
+    /// Centralised prompt construction engine.
+    pub prompt_engine: PromptEngine,
     pub metrics_registry: prometheus_client::registry::Registry,
     pub started_at: Instant,
     pub config: AppConfig,
@@ -214,6 +223,28 @@ impl AppState {
             }
         }
 
+        // Diary store
+        let diary_db = config
+            .data_dir
+            .join(&umms_config.diary.db);
+        let diary_store = Arc::new(
+            DiaryStore::new(&diary_db).map_err(|e| {
+                UmmsError::Config(format!("diary store init failed: {e}"))
+            })?,
+        );
+        tracing::info!("Diary store initialised");
+
+        // Session store
+        let session_store = Arc::new(
+            SessionStore::new(config.data_dir.join("sessions.sqlite")).map_err(|e| {
+                UmmsError::Config(format!("session store init failed: {e}"))
+            })?,
+        );
+        tracing::info!("Session store initialised");
+
+        // Prompt engine (with default chat template)
+        let prompt_engine = PromptEngine::with_defaults();
+
         // Retrieval pipeline (requires encoder for query encoding)
         let retriever = model_pool.as_ref().map(|pool| {
             let enc_arc: Arc<dyn Encoder> = Arc::clone(pool) as Arc<dyn Encoder>;
@@ -257,6 +288,9 @@ impl AppState {
             tag_store,
             retriever,
             persona_store,
+            diary_store,
+            session_store,
+            prompt_engine,
             metrics_registry,
             started_at: Instant::now(),
             config,

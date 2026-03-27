@@ -26,3 +26,12 @@ export interface AgentInfo {
   description: string
   expertise: string[]
 }
+
+export interface ChatSession {
+  id: string
+  agentId: string
+  title: string
+  messages: ChatMessage[]
+  createdAt: number
+  updatedAt: number
+}

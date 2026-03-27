@@ -29,3 +29,4 @@ serde_json.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 prometheus-client.workspace = true
+rusqlite.workspace = true

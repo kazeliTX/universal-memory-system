@@ -27,6 +27,8 @@ pub struct UmmsConfig {
     pub model_pool: ModelPoolConfig,
     pub http: HttpConfig,
     pub scheduler: SchedulerConfig,
+    pub chat: ChatConfig,
+    pub diary: DiaryConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +343,64 @@ impl Default for SchedulerConfig {
             enabled: true,
             check_interval_secs: 30,
             db: "scheduler.sqlite".to_owned(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+
+/// Configuration for the chat subsystem (prompt construction).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ChatConfig {
+    /// Maximum diary entries to include in the chat prompt.
+    pub diary_entries_in_prompt: usize,
+    /// Maximum memory sources to include.
+    pub max_sources: usize,
+    /// Maximum number of history messages sent to the LLM.
+    pub max_history_messages: usize,
+    /// Rough token budget for history (chars / 4 for English, chars / 2 for CJK).
+    pub max_history_tokens: usize,
+    /// Auto-generate session title from the first user message.
+    pub auto_title: bool,
+}
+
+impl Default for ChatConfig {
+    fn default() -> Self {
+        Self {
+            diary_entries_in_prompt: 10,
+            max_sources: 5,
+            max_history_messages: 20,
+            max_history_tokens: 4000,
+            auto_title: true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Diary (agent observation notebook)
+// ---------------------------------------------------------------------------
+
+/// Configuration for the agent diary system.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct DiaryConfig {
+    /// Whether auto-diary generation is enabled after each chat turn.
+    pub auto_generate: bool,
+    /// SQLite database filename for diary storage (relative to data_dir).
+    pub db: String,
+    /// Maximum diary entries to keep per agent (oldest pruned beyond this).
+    pub max_entries_per_agent: usize,
+}
+
+impl Default for DiaryConfig {
+    fn default() -> Self {
+        Self {
+            auto_generate: true,
+            db: "diary.sqlite".to_owned(),
+            max_entries_per_agent: 200,
         }
     }
 }

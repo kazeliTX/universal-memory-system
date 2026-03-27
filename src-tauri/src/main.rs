@@ -84,6 +84,17 @@ async fn main() {
             commands::persona::delete_agent,
             // Chat
             commands::chat::chat,
+            // Sessions
+            commands::sessions::list_sessions,
+            commands::sessions::get_session,
+            commands::sessions::create_session,
+            commands::sessions::rename_session,
+            commands::sessions::delete_session,
+            // Diary
+            commands::diary::list_diary,
+            commands::diary::add_diary_entry,
+            commands::diary::update_diary_entry,
+            commands::diary::delete_diary_entry,
             // Audit
             commands::audit::query_audit_events,
             // Encoder

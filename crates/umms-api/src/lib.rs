@@ -19,8 +19,10 @@
 //! - [`ApiError`](handlers::memory::ApiError) converts to proper HTTP status codes.
 
 pub mod handlers;
+pub mod prompt;
 pub mod response;
 pub mod services;
+pub mod session;
 pub mod state;
 
 use std::sync::Arc;
@@ -96,6 +98,38 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         // Chat
         .route("/api/chat", post(handlers::chat::chat))
+        // Sessions
+        .route("/api/sessions", get(handlers::sessions::list_sessions))
+        .route("/api/sessions", post(handlers::sessions::create_session))
+        .route(
+            "/api/sessions/{id}",
+            get(handlers::sessions::get_session),
+        )
+        .route(
+            "/api/sessions/{id}/title",
+            put(handlers::sessions::rename_session),
+        )
+        .route(
+            "/api/sessions/{id}",
+            delete(handlers::sessions::delete_session),
+        )
+        // Diary
+        .route(
+            "/api/diary/{agent_id}",
+            get(handlers::diary::list_diary),
+        )
+        .route(
+            "/api/diary/{agent_id}",
+            post(handlers::diary::add_diary),
+        )
+        .route(
+            "/api/diary/{agent_id}/{entry_id}",
+            put(handlers::diary::update_diary),
+        )
+        .route(
+            "/api/diary/{agent_id}/{entry_id}",
+            delete(handlers::diary::delete_diary),
+        )
         // Audit
         .route("/api/audit", get(handlers::audit::audit_events))
         // Encoder
