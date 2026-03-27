@@ -77,6 +77,8 @@ entity_extraction = "gemini-flash"
 chat = "gemini-flash"
 
 [http]
+host = "127.0.0.1"
+port = 8720
 
 
 # [storage]

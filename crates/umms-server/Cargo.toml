@@ -1,0 +1,19 @@
+[package]
+name = "umms-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "UMMS Core Service — standalone HTTP server for headless deployment"
+
+[lints]
+workspace = true
+
+[dependencies]
+umms-core.workspace = true
+umms-api.workspace = true
+umms-observe.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tracing.workspace = true
+dotenvy.workspace = true

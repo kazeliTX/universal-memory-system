@@ -17,3 +17,4 @@ pub mod memory;
 pub mod models;
 pub mod system;
 pub mod tags;
+pub mod ws;

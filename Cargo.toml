@@ -11,6 +11,7 @@ members = [
     "crates/umms-api",
     "crates/umms-observe",
     "crates/umms-python",
+    "crates/umms-server",
     "src-tauri",
     "tests/integration",
 ]
@@ -85,6 +86,7 @@ prometheus-client = "0.22"
 
 # Config
 config = "0.14"
+dotenvy = "0.15"
 
 # Testing
 criterion = { version = "0.5", features = ["async_tokio"] }
@@ -100,3 +102,4 @@ umms-persona = { path = "crates/umms-persona" }
 umms-api = { path = "crates/umms-api" }
 umms-observe = { path = "crates/umms-observe" }
 umms-python = { path = "crates/umms-python" }
+umms-server = { path = "crates/umms-server" }

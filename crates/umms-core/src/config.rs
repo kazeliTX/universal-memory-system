@@ -24,6 +24,7 @@ pub struct UmmsConfig {
     pub reshaping: ReshapingConfig,
     pub observe: ObserveConfig,
     pub model_pool: ModelPoolConfig,
+    pub http: HttpConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +255,28 @@ impl Default for TaskRoutingConfig {
             reranking: "gemini-embed".to_owned(),
             entity_extraction: "gemini-flash".to_owned(),
             chat: "gemini-flash".to_owned(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP server
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct HttpConfig {
+    /// Bind address for the HTTP server.
+    pub host: String,
+    /// TCP port for the HTTP server.
+    pub port: u16,
+}
+
+impl Default for HttpConfig {
+    fn default() -> Self {
+        Self {
+            host: "127.0.0.1".to_owned(),
+            port: 8720,
         }
     }
 }

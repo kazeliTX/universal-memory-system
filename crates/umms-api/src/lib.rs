@@ -120,7 +120,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/consolidation/run/{agent_id}",
             post(handlers::consolidation::run_consolidation),
         )
+        // WebSocket
+        .route("/ws/events", get(handlers::ws::events_ws))
         // Middleware
         .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+/// Alias for [`build_router`] — convenience for the standalone server crate.
+pub fn create_router(state: Arc<AppState>) -> Router {
+    build_router(state)
 }
