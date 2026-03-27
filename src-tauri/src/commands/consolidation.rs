@@ -6,7 +6,7 @@ use tracing::{error, info};
 
 use umms_api::response::{
     ConsolidationReportResponse, DecayResultResponse, EvolutionResultResponse,
-    PromoteResultResponse,
+    PromoteResultResponse, WkdResultResponse,
 };
 use umms_api::AppState;
 use umms_consolidation::ConsolidationScheduler;
@@ -25,6 +25,7 @@ pub async fn run_consolidation(
     let scheduler = ConsolidationScheduler::from_config(
         cfg.decay.clone(),
         cfg.graph_evolution.clone(),
+        cfg.wkd.clone(),
         cfg.promotion.clone(),
     );
 
@@ -45,6 +46,14 @@ pub async fn run_consolidation(
             updated: report.decay.updated,
             archived: report.decay.archived,
             elapsed_ms: report.decay.elapsed_ms,
+        },
+        wkd: WkdResultResponse {
+            memories_scanned: report.wkd.memories_scanned,
+            clusters_found: report.wkd.clusters_found,
+            memories_merged: report.wkd.memories_merged,
+            memories_archived: report.wkd.memories_archived,
+            distilled_created: report.wkd.distilled_created,
+            elapsed_ms: report.wkd.elapsed_ms,
         },
         evolution: EvolutionResultResponse {
             pairs_scanned: report.evolution.pairs_scanned,

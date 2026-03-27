@@ -23,9 +23,11 @@ pub mod decay;
 pub mod graph_evolution;
 pub mod llm;
 pub mod scheduler;
+pub mod wkd;
 
 pub use auto_promote::{AutoPromoter, PromoteResult};
 pub use decay::{DecayEngine, DecayResult};
 pub use graph_evolution::{EvolutionResult, GraphEvolution};
 pub use llm::{ExtractedEntity, ExtractedRelation, GenerativeLlm};
 pub use scheduler::{ConsolidationReport, ConsolidationScheduler};
+pub use wkd::{WkdEngine, WkdResult};

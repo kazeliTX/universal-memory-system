@@ -17,3 +17,6 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 config.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

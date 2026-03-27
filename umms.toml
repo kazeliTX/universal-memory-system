@@ -57,6 +57,8 @@ tokenizer = "jieba"
 [[model_pool.models]]
 id = "gemini-embed"
 provider = "gemini"
+# Use "gemini-embedding-002" for multimodal embedding (images + text).
+# "gemini-embedding-001" supports text only.
 model_name = "gemini-embedding-001"
 api_key_env = "GEMINI_API_KEY"
 tasks = ["embedding"]
@@ -86,6 +88,15 @@ chat = "gemini-flash"
 host = "127.0.0.1"
 port = 8720
 
+
+[importance]
+recency_half_life_days = 7.0
+frequency_log_base = 10.0
+frequency_weight = 0.15
+centrality_weight = 0.10
+cross_agent_bonus = 0.05
+cross_agent_max = 0.15
+feedback_weight = 0.10
 
 [storage]
 graph_backend = "cozo"

@@ -16,7 +16,7 @@ use umms_observe::{AuditEventBuilder, AuditEventType};
 
 use crate::response::{
     ConsolidationReportResponse, DecayResultResponse, EvolutionResultResponse,
-    PromoteResultResponse,
+    PromoteResultResponse, WkdResultResponse,
 };
 use crate::state::AppState;
 
@@ -24,15 +24,16 @@ use crate::state::AppState;
 pub async fn run_consolidation(
     State(state): State<Arc<AppState>>,
     Path(agent_id): Path<String>,
-) -> Result<Json<ConsolidationReportResponse>, super::memory::ApiError> {
+) -> Result<Json<ConsolidationReportResponse>, String> {
     let aid = AgentId::from_str(&agent_id)
-        .map_err(|e| super::memory::ApiError::BadRequest(format!("invalid agent_id: {e}")))?;
+        .map_err(|e| format!("invalid agent_id: {e}"))?;
 
     let cfg = config::load_config();
 
     let scheduler = ConsolidationScheduler::from_config(
         cfg.decay.clone(),
         cfg.graph_evolution.clone(),
+        cfg.wkd.clone(),
         cfg.promotion.clone(),
     );
 
@@ -43,7 +44,7 @@ pub async fn run_consolidation(
         .await
         .map_err(|e| {
             error!(agent_id = %aid, error = %e, "Consolidation cycle failed");
-            super::memory::ApiError::Internal(format!("Consolidation failed: {e}"))
+            format!("Consolidation failed: {e}")
         })?;
 
     // Record audit event
@@ -54,6 +55,8 @@ pub async fn run_consolidation(
                 "agent_id": &agent_id,
                 "decay_updated": report.decay.updated,
                 "decay_archived": report.decay.archived,
+                "wkd_clusters": report.wkd.clusters_found,
+                "wkd_distilled": report.wkd.distilled_created,
                 "nodes_merged": report.evolution.nodes_merged,
                 "edges_strengthened": report.evolution.edges_strengthened,
                 "promoted": report.promotion.promoted,
@@ -69,6 +72,14 @@ pub async fn run_consolidation(
             updated: report.decay.updated,
             archived: report.decay.archived,
             elapsed_ms: report.decay.elapsed_ms,
+        },
+        wkd: WkdResultResponse {
+            memories_scanned: report.wkd.memories_scanned,
+            clusters_found: report.wkd.clusters_found,
+            memories_merged: report.wkd.memories_merged,
+            memories_archived: report.wkd.memories_archived,
+            distilled_created: report.wkd.distilled_created,
+            elapsed_ms: report.wkd.elapsed_ms,
         },
         evolution: EvolutionResultResponse {
             pairs_scanned: report.evolution.pairs_scanned,

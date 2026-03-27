@@ -17,6 +17,7 @@ pub mod config;
 pub mod enums;
 pub mod error;
 pub mod ids;
+pub mod importance;
 pub mod memory;
 pub mod model;
 pub mod tag;

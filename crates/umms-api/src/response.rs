@@ -323,6 +323,19 @@ pub struct ChunkDetailResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Multimodal ingest
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct MultimodalIngestResponse {
+    pub memory_id: String,
+    pub modality: String,
+    pub content_text: String,
+    pub vector_dimension: usize,
+    pub latency_ms: u64,
+}
+
+// ---------------------------------------------------------------------------
 // Tags
 // ---------------------------------------------------------------------------
 
@@ -460,6 +473,7 @@ pub struct LgsrrRetrievalHintsResponse {
 pub struct ConsolidationReportResponse {
     pub agent_id: String,
     pub decay: DecayResultResponse,
+    pub wkd: WkdResultResponse,
     pub evolution: EvolutionResultResponse,
     pub promotion: PromoteResultResponse,
     pub total_ms: u64,
@@ -471,6 +485,16 @@ pub struct DecayResultResponse {
     pub scanned: usize,
     pub updated: usize,
     pub archived: usize,
+    pub elapsed_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WkdResultResponse {
+    pub memories_scanned: usize,
+    pub clusters_found: usize,
+    pub memories_merged: usize,
+    pub memories_archived: usize,
+    pub distilled_created: usize,
     pub elapsed_ms: u64,
 }
 

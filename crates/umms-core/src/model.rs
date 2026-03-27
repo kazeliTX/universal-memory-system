@@ -106,6 +106,28 @@ pub trait ModelProvider: Send + Sync {
 
     /// Get the embedding dimension (if applicable).
     fn embedding_dimension(&self) -> Option<usize>;
+
+    /// Generate embedding for an image (base64 encoded).
+    ///
+    /// Only supported by multimodal-capable embedding models (e.g., gemini-embedding-002).
+    /// Default implementation returns an error — only providers that support multimodal
+    /// embedding need to override this.
+    async fn embed_image(&self, _image_base64: &str, _mime_type: &str) -> Result<Vec<f32>> {
+        Err(crate::error::UmmsError::Internal(
+            "Image embedding not supported by this provider".into(),
+        ))
+    }
+
+    /// Transcribe audio to text.
+    ///
+    /// Uses a generative model with audio input support (e.g., Gemini 2.5 Flash).
+    /// Default implementation returns an error — only providers that support audio
+    /// input need to override this.
+    async fn transcribe_audio(&self, _audio_base64: &str, _mime_type: &str) -> Result<String> {
+        Err(crate::error::UmmsError::Internal(
+            "Audio transcription not supported by this provider".into(),
+        ))
+    }
 }
 
 /// Type alias for a shared provider reference.
@@ -135,6 +157,57 @@ mod tests {
     #[test]
     fn model_task_all_variants() {
         assert_eq!(ModelTask::all().len(), 5);
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests for default trait method implementations (embed_image, transcribe_audio)
+    // -----------------------------------------------------------------------
+
+    /// Minimal provider that only implements the required methods.
+    struct StubProvider;
+
+    #[async_trait]
+    impl ModelProvider for StubProvider {
+        fn info(&self) -> ModelInfo {
+            ModelInfo {
+                id: "stub".to_string(),
+                provider: "stub".to_string(),
+                model_name: "stub-model".to_string(),
+                tasks: vec![],
+                dimension: None,
+                max_tokens: None,
+                available: false,
+            }
+        }
+        fn supports(&self, _task: ModelTask) -> bool { false }
+        async fn embed(&self, _text: &str) -> Result<Vec<f32>> {
+            Ok(vec![0.0; 8])
+        }
+        async fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>> {
+            Ok(vec![])
+        }
+        async fn generate(&self, _prompt: &str, _max_tokens: Option<usize>) -> Result<String> {
+            Ok(String::new())
+        }
+        fn embedding_dimension(&self) -> Option<usize> { Some(8) }
+    }
+
+    #[tokio::test]
+    async fn embed_image_default_returns_error() {
+        let provider = StubProvider;
+        let result = provider.embed_image("base64data", "image/png").await;
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Image embedding not supported"));
+    }
+
+    #[tokio::test]
+    async fn transcribe_audio_default_returns_error() {
+        let provider = StubProvider;
+        let result = provider.transcribe_audio("base64data", "audio/wav").await;
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Audio transcription not supported"));
     }
 
     #[test]

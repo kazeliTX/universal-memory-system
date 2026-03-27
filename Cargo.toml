@@ -78,6 +78,9 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 reqwest = { version = "0.12", features = ["json"] }
 
+# Encoding
+base64 = "0.22"
+
 # Search
 tantivy = "0.22"
 

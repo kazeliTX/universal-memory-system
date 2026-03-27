@@ -275,6 +275,36 @@ impl VectorStore for LanceVectorStore {
         Ok(())
     }
 
+    async fn update_user_rating(
+        &self,
+        id: &MemoryId,
+        rating: Option<f32>,
+    ) -> Result<()> {
+        let table = self.table.lock().await;
+        let filter = format!("id = '{}'", id.as_str());
+        match rating {
+            Some(r) => {
+                table
+                    .update()
+                    .only_if(&filter)
+                    .column("user_rating", r.to_string())
+                    .execute()
+                    .await
+                    .map_err(lance_err)?;
+            }
+            None => {
+                table
+                    .update()
+                    .only_if(&filter)
+                    .column("user_rating", "null".to_string())
+                    .execute()
+                    .await
+                    .map_err(lance_err)?;
+            }
+        }
+        Ok(())
+    }
+
     #[instrument(skip(self), fields(agent = %agent_id, include_shared))]
     async fn count(&self, agent_id: &AgentId, include_shared: bool) -> Result<u64> {
         let filter = if include_shared {
@@ -401,6 +431,7 @@ fn build_schema(vector_dim: usize) -> Schema {
         Field::new("created_at", DataType::Utf8, false),
         Field::new("accessed_at", DataType::Utf8, false),
         Field::new("access_count", DataType::UInt64, false),
+        Field::new("user_rating", DataType::Float32, true),
     ])
 }
 
@@ -468,6 +499,7 @@ fn entries_to_batch(
     let created: Vec<String> = entries.iter().map(|e| e.created_at.to_rfc3339()).collect();
     let accessed: Vec<String> = entries.iter().map(|e| e.accessed_at.to_rfc3339()).collect();
     let access_counts: Vec<u64> = entries.iter().map(|e| e.access_count).collect();
+    let user_ratings: Vec<Option<f32>> = entries.iter().map(|e| e.user_rating).collect();
 
     let batch = RecordBatch::try_new(
         Arc::clone(schema),
@@ -499,6 +531,7 @@ fn entries_to_batch(
                 accessed.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
             )) as ArrayRef,
             Arc::new(UInt64Array::from(access_counts)) as ArrayRef,
+            Arc::new(Float32Array::from(user_ratings)) as ArrayRef,
         ],
     )
     .map_err(|e| UmmsError::Storage(StorageError::Lance(format!("Arrow error: {e}"))))?;
@@ -537,6 +570,7 @@ fn empty_batch(schema: &Arc<Schema>, vector_dim: usize) -> Result<RecordBatch> {
             Arc::new(StringArray::from(empty_str.clone())) as ArrayRef,
             Arc::new(StringArray::from(empty_str)) as ArrayRef,
             Arc::new(UInt64Array::from(Vec::<u64>::new())) as ArrayRef,
+            Arc::new(Float32Array::from(Vec::<Option<f32>>::new())) as ArrayRef,
         ],
     )
     .map_err(|e| UmmsError::Storage(StorageError::Lance(format!("Arrow error: {e}"))))?;
@@ -587,6 +621,11 @@ fn batch_to_entries(batch: &RecordBatch, _vector_dim: usize) -> Result<Vec<Memor
             UmmsError::Storage(StorageError::Lance("Missing column: access_count".into()))
         })?;
 
+    // user_rating is optional (nullable, may be absent in older tables).
+    let user_rating_col = batch
+        .column_by_name("user_rating")
+        .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
+
     let vector_col = batch
         .column_by_name("vector")
         .and_then(|c| c.as_any().downcast_ref::<FixedSizeListArray>());
@@ -635,6 +674,9 @@ fn batch_to_entries(batch: &RecordBatch, _vector_dim: usize) -> Result<Vec<Memor
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
         let access_count = access_counts.value(i);
+        let user_rating = user_rating_col.and_then(|col| {
+            if col.is_null(i) { None } else { Some(col.value(i)) }
+        });
 
         entries.push(MemoryEntry {
             id,
@@ -651,6 +693,7 @@ fn batch_to_entries(batch: &RecordBatch, _vector_dim: usize) -> Result<Vec<Memor
             created_at,
             accessed_at,
             access_count,
+            user_rating,
         });
     }
 

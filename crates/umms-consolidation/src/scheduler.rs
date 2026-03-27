@@ -10,7 +10,7 @@ use chrono::Utc;
 use serde::Serialize;
 use tracing::{info, instrument};
 
-use umms_core::config::{DecayConfig, GraphEvolutionConfig, PromotionConfig};
+use umms_core::config::{DecayConfig, GraphEvolutionConfig, PromotionConfig, WkdConfig};
 use umms_core::error::Result;
 use umms_core::traits::{KnowledgeGraphStore, VectorStore};
 use umms_core::types::AgentId;
@@ -18,6 +18,7 @@ use umms_core::types::AgentId;
 use crate::auto_promote::{AutoPromoter, PromoteResult};
 use crate::decay::{DecayEngine, DecayResult};
 use crate::graph_evolution::{EvolutionResult, GraphEvolution};
+use crate::wkd::{WkdEngine, WkdResult};
 
 /// Full report of a consolidation cycle for one agent.
 #[derive(Debug, Clone, Serialize)]
@@ -26,6 +27,8 @@ pub struct ConsolidationReport {
     pub agent_id: String,
     /// Results of the decay pass.
     pub decay: DecayResult,
+    /// Results of WKD compression.
+    pub wkd: WkdResult,
     /// Results of graph evolution (merge + strengthen).
     pub evolution: EvolutionResult,
     /// Results of auto-promotion.
@@ -38,15 +41,17 @@ pub struct ConsolidationReport {
 
 /// Orchestrates all consolidation sub-systems into a single cycle.
 ///
-/// A consolidation cycle runs three phases in sequence:
+/// A consolidation cycle runs four phases in sequence:
 /// 1. **Decay**: Reduce importance of stale memories, archive fully-decayed ones.
-/// 2. **Graph evolution**: Merge similar KG nodes, strengthen frequently-used edges.
-/// 3. **Auto-promotion**: Promote private memories that meet criteria to shared scope.
+/// 2. **WKD compression**: Cluster and merge redundant memories into distilled entries.
+/// 3. **Graph evolution**: Merge similar KG nodes, strengthen frequently-used edges.
+/// 4. **Auto-promotion**: Promote private memories that meet criteria to shared scope.
 ///
 /// The scheduler does not own the stores — they are passed in per-call,
 /// allowing the caller to control lifecycle and sharing.
 pub struct ConsolidationScheduler {
     decay_engine: DecayEngine,
+    wkd_engine: WkdEngine,
     graph_evolution: GraphEvolution,
     auto_promoter: AutoPromoter,
     // Future: llm: Option<Arc<dyn GenerativeLlm>>
@@ -57,19 +62,22 @@ impl ConsolidationScheduler {
     pub fn new(decay_config: DecayConfig, promotion_config: PromotionConfig) -> Self {
         Self {
             decay_engine: DecayEngine::new(decay_config),
+            wkd_engine: WkdEngine::new(WkdConfig::default()),
             graph_evolution: GraphEvolution::with_defaults(),
             auto_promoter: AutoPromoter::new(promotion_config),
         }
     }
 
-    /// Create a scheduler from full config (decay + graph evolution + promotion).
+    /// Create a scheduler from full config (decay + graph evolution + wkd + promotion).
     pub fn from_config(
         decay_config: DecayConfig,
         graph_evo_config: GraphEvolutionConfig,
+        wkd_config: WkdConfig,
         promotion_config: PromotionConfig,
     ) -> Self {
         Self {
             decay_engine: DecayEngine::new(decay_config),
+            wkd_engine: WkdEngine::new(wkd_config),
             graph_evolution: GraphEvolution::new(
                 graph_evo_config.min_similarity,
                 graph_evo_config.max_merge_per_run,
@@ -87,6 +95,7 @@ impl ConsolidationScheduler {
     ) -> Self {
         Self {
             decay_engine: DecayEngine::new(decay_config),
+            wkd_engine: WkdEngine::new(WkdConfig::default()),
             graph_evolution: GraphEvolution::new(min_similarity, max_merge_per_run),
             auto_promoter: AutoPromoter::new(promotion_config),
         }
@@ -95,6 +104,11 @@ impl ConsolidationScheduler {
     /// Access the decay engine for standalone use.
     pub fn decay_engine(&self) -> &DecayEngine {
         &self.decay_engine
+    }
+
+    /// Access the WKD engine for standalone use.
+    pub fn wkd_engine(&self) -> &WkdEngine {
+        &self.wkd_engine
     }
 
     /// Access the graph evolution engine for standalone use.
@@ -130,7 +144,15 @@ impl ConsolidationScheduler {
             "Decay phase complete"
         );
 
-        // Phase 2: Graph evolution
+        // Phase 2: WKD compression
+        let wkd_result = self.wkd_engine.compress(vector_store, agent_id, None).await?;
+        info!(
+            clusters = wkd_result.clusters_found,
+            distilled = wkd_result.distilled_created,
+            "WKD compression phase complete"
+        );
+
+        // Phase 3: Graph evolution
         let mut evolution_result = self
             .graph_evolution
             .evolve(graph, Some(agent_id))
@@ -148,7 +170,7 @@ impl ConsolidationScheduler {
             "Graph evolution phase complete"
         );
 
-        // Phase 3: Auto-promotion
+        // Phase 4: Auto-promotion
         let promote_result = self
             .auto_promoter
             .scan_and_promote(vector_store, agent_id)
@@ -163,6 +185,7 @@ impl ConsolidationScheduler {
         let report = ConsolidationReport {
             agent_id: agent_id.as_str().to_owned(),
             decay: decay_result,
+            wkd: wkd_result,
             evolution: evolution_result,
             promotion: promote_result,
             total_ms,
@@ -216,6 +239,14 @@ mod tests {
                 updated: 10,
                 archived: 2,
                 elapsed_ms: 50,
+            },
+            wkd: WkdResult {
+                memories_scanned: 100,
+                clusters_found: 2,
+                memories_merged: 6,
+                memories_archived: 6,
+                distilled_created: 2,
+                elapsed_ms: 25,
             },
             evolution: EvolutionResult {
                 pairs_scanned: 20,

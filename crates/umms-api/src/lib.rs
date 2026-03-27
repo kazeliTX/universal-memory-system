@@ -59,6 +59,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/memories/vector/entry/{id}",
             get(handlers::memory::vector_detail),
         )
+        .route(
+            "/api/memories/{memory_id}/rate",
+            post(handlers::memory::rate_memory),
+        )
         // Knowledge graph
         .route(
             "/api/memories/graph/{agent_id}",
@@ -215,6 +219,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/search", post(handlers::encoder::semantic_search))
         // Document ingestion
         .route("/api/ingest", post(handlers::ingest::ingest_document))
+        .route(
+            "/api/ingest/multimodal",
+            post(handlers::ingest::ingest_multimodal),
+        )
         // Benchmarks
         .route(
             "/api/benchmarks",

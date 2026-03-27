@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use tracing::instrument;
 
 use umms_core::config::{EpaConfig, ReshapingConfig, RetrieverConfig};
+use umms_core::importance::{self, ImportanceConfig};
 use umms_core::error::Result;
 use umms_core::tag::EpaResult;
 use umms_core::traits::{
@@ -55,6 +56,7 @@ pub struct RetrievalPipeline {
     epa: Option<EpaAnalyzer>,
     reshaper: Option<QueryReshaper>,
     config: RetrieverConfig,
+    importance_config: ImportanceConfig,
 }
 
 impl RetrievalPipeline {
@@ -64,6 +66,18 @@ impl RetrievalPipeline {
         encoder: Arc<dyn Encoder>,
         graph: Arc<dyn KnowledgeGraphStore>,
         config: RetrieverConfig,
+    ) -> Self {
+        Self::with_importance(bm25, vector, encoder, graph, config, ImportanceConfig::default())
+    }
+
+    /// Construct the pipeline with a custom importance scoring configuration.
+    pub fn with_importance(
+        bm25: Arc<Bm25Index>,
+        vector: Arc<dyn VectorStore>,
+        encoder: Arc<dyn Encoder>,
+        graph: Arc<dyn KnowledgeGraphStore>,
+        config: RetrieverConfig,
+        importance_config: ImportanceConfig,
     ) -> Self {
         let hybrid = HybridRecall::new(
             bm25,
@@ -79,6 +93,7 @@ impl RetrievalPipeline {
             epa: None,
             reshaper: None,
             config,
+            importance_config,
         }
     }
 
@@ -211,6 +226,26 @@ impl RetrievalPipeline {
         if self.config.min_score > 0.0 {
             reranked.retain(|h| h.memory.score >= self.config.min_score);
         }
+
+        // ADR-013: Blend cosine score with multi-dimensional importance.
+        // 80% cosine similarity + 20% effective importance.
+        for hit in &mut reranked {
+            let effective_imp = importance::score_entry(
+                &hit.memory.entry,
+                0, // graph_in_degree — requires graph query, skip for now
+                0, // cross_agent_count — skip for now
+                &self.importance_config,
+            );
+            hit.memory.score = hit.memory.score * 0.8 + effective_imp * 0.2;
+        }
+        // Re-sort after importance blending.
+        reranked.sort_by(|a, b| {
+            b.memory
+                .score
+                .partial_cmp(&a.memory.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         let rerank_count = reranked.len();
 
         // Stage 3: Diffusion

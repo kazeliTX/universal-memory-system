@@ -31,3 +31,4 @@ tracing.workspace = true
 chrono.workspace = true
 prometheus-client.workspace = true
 rusqlite.workspace = true
+base64.workspace = true

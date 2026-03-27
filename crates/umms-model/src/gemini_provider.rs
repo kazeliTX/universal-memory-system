@@ -88,6 +88,42 @@ struct PartPayload<'a> {
     text: &'a str,
 }
 
+// ---------------------------------------------------------------------------
+// Multimodal embed/generate API types
+// ---------------------------------------------------------------------------
+
+/// A content part that can be either text or inline binary data.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum MultimodalPart<'a> {
+    Text { text: &'a str },
+    InlineData { inline_data: InlineData<'a> },
+}
+
+#[derive(Serialize)]
+struct InlineData<'a> {
+    mime_type: &'a str,
+    data: &'a str,
+}
+
+/// Embed request that uses multimodal parts (for image embedding).
+#[derive(Serialize)]
+struct MultimodalEmbedRequest<'a> {
+    model: &'a str,
+    content: MultimodalContent<'a>,
+}
+
+#[derive(Serialize)]
+struct MultimodalContent<'a> {
+    parts: Vec<MultimodalPart<'a>>,
+}
+
+/// Generate request that uses multimodal parts (for audio transcription).
+#[derive(Serialize)]
+struct MultimodalGenerateRequest<'a> {
+    contents: Vec<MultimodalContent<'a>>,
+}
+
 #[derive(Deserialize)]
 struct EmbedContentResponse {
     embedding: EmbeddingValue,
@@ -390,6 +426,213 @@ impl GeminiProvider {
         }))
     }
 
+    /// Call the embedContent endpoint with inline binary data (for image embedding) with retry.
+    #[instrument(skip(self, data_base64), fields(model = %self.model_name, mime_type = %mime_type))]
+    async fn call_embed_image(&self, data_base64: &str, mime_type: &str) -> Result<Vec<f32>> {
+        let url = format!("{}:embedContent?key={}", self.base_url(), self.api_key);
+        let full_model = format!("models/{}", self.model_name);
+        let body = MultimodalEmbedRequest {
+            model: &full_model,
+            content: MultimodalContent {
+                parts: vec![MultimodalPart::InlineData {
+                    inline_data: InlineData {
+                        mime_type,
+                        data: data_base64,
+                    },
+                }],
+            },
+        };
+
+        let start = Instant::now();
+        let mut last_err = None;
+
+        for attempt in 0..=self.max_retries {
+            if attempt > 0 {
+                self.stats.total_retries.fetch_add(1, Ordering::Relaxed);
+                let delay = Duration::from_millis(100 * 2u64.pow(attempt - 1));
+                warn!(attempt, delay_ms = delay.as_millis(), "Retrying Gemini image embed API");
+                tokio::time::sleep(delay).await;
+            }
+
+            match self.client.post(&url).json(&body).send().await {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        let parsed: EmbedContentResponse = resp.json().await.map_err(|e| {
+                            UmmsError::Encoding(EncodingError::ApiCallFailed {
+                                provider: "gemini".into(),
+                                reason: format!("Failed to parse image embed response: {e}"),
+                            })
+                        })?;
+
+                        let elapsed = start.elapsed();
+                        self.stats
+                            .total_duration_us
+                            .fetch_add(elapsed.as_micros() as u64, Ordering::Relaxed);
+
+                        debug!(
+                            dim = parsed.embedding.values.len(),
+                            latency_ms = elapsed.as_millis(),
+                            "Image embedding generated"
+                        );
+
+                        return Ok(parsed.embedding.values);
+                    }
+
+                    let status = resp.status();
+                    let err_body = resp.text().await.unwrap_or_default();
+                    let reason = if let Ok(ge) =
+                        serde_json::from_str::<GeminiErrorResponse>(&err_body)
+                    {
+                        format!("{} ({})", ge.error.message, ge.error.status)
+                    } else {
+                        format!("HTTP {status}: {err_body}")
+                    };
+
+                    if status.as_u16() == 429 || status.is_server_error() {
+                        last_err = Some(reason);
+                        continue;
+                    }
+
+                    self.stats.total_errors.fetch_add(1, Ordering::Relaxed);
+                    return Err(UmmsError::Encoding(EncodingError::ApiCallFailed {
+                        provider: "gemini".into(),
+                        reason,
+                    }));
+                }
+                Err(e) => {
+                    if e.is_timeout() {
+                        last_err = Some(format!("Timeout after {}ms", self.timeout.as_millis()));
+                    } else {
+                        last_err = Some(format!("Network error: {e}"));
+                    }
+                    continue;
+                }
+            }
+        }
+
+        self.stats.total_errors.fetch_add(1, Ordering::Relaxed);
+        Err(UmmsError::Encoding(EncodingError::ApiCallFailed {
+            provider: "gemini".into(),
+            reason: format!(
+                "All {} attempts failed. Last error: {}",
+                self.max_retries + 1,
+                last_err.unwrap_or_else(|| "unknown".into())
+            ),
+        }))
+    }
+
+    /// Call the generateContent endpoint with audio inline data for transcription, with retry.
+    #[instrument(skip(self, audio_base64), fields(model = %self.model_name, mime_type = %mime_type))]
+    async fn call_transcribe_audio(&self, audio_base64: &str, mime_type: &str) -> Result<String> {
+        let url = format!(
+            "{}:generateContent?key={}",
+            self.base_url(),
+            self.api_key
+        );
+
+        let body = MultimodalGenerateRequest {
+            contents: vec![MultimodalContent {
+                parts: vec![
+                    MultimodalPart::Text {
+                        text: "Transcribe this audio to text. Return only the transcription, no explanation.",
+                    },
+                    MultimodalPart::InlineData {
+                        inline_data: InlineData {
+                            mime_type,
+                            data: audio_base64,
+                        },
+                    },
+                ],
+            }],
+        };
+
+        let start = Instant::now();
+        let mut last_err = None;
+
+        for attempt in 0..=self.max_retries {
+            if attempt > 0 {
+                self.stats.total_retries.fetch_add(1, Ordering::Relaxed);
+                let delay = Duration::from_millis(100 * 2u64.pow(attempt - 1));
+                warn!(attempt, delay_ms = delay.as_millis(), "Retrying Gemini audio transcription");
+                tokio::time::sleep(delay).await;
+            }
+
+            match self.client.post(&url).json(&body).send().await {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        let parsed: GenerateContentResponse =
+                            resp.json().await.map_err(|e| {
+                                UmmsError::Encoding(EncodingError::ApiCallFailed {
+                                    provider: "gemini".into(),
+                                    reason: format!("Failed to parse transcription response: {e}"),
+                                })
+                            })?;
+
+                        let elapsed = start.elapsed();
+                        self.stats
+                            .total_duration_us
+                            .fetch_add(elapsed.as_micros() as u64, Ordering::Relaxed);
+
+                        let text = parsed
+                            .candidates
+                            .into_iter()
+                            .next()
+                            .and_then(|c| c.content.parts.into_iter().next())
+                            .map(|p| p.text)
+                            .unwrap_or_default();
+
+                        debug!(
+                            chars = text.len(),
+                            latency_ms = elapsed.as_millis(),
+                            "Audio transcribed"
+                        );
+
+                        return Ok(text);
+                    }
+
+                    let status = resp.status();
+                    let err_body = resp.text().await.unwrap_or_default();
+                    let reason = if let Ok(ge) =
+                        serde_json::from_str::<GeminiErrorResponse>(&err_body)
+                    {
+                        format!("{} ({})", ge.error.message, ge.error.status)
+                    } else {
+                        format!("HTTP {status}: {err_body}")
+                    };
+
+                    if status.as_u16() == 429 || status.is_server_error() {
+                        last_err = Some(reason);
+                        continue;
+                    }
+
+                    self.stats.total_errors.fetch_add(1, Ordering::Relaxed);
+                    return Err(UmmsError::Encoding(EncodingError::ApiCallFailed {
+                        provider: "gemini".into(),
+                        reason,
+                    }));
+                }
+                Err(e) => {
+                    if e.is_timeout() {
+                        last_err = Some(format!("Timeout after {}ms", self.timeout.as_millis()));
+                    } else {
+                        last_err = Some(format!("Network error: {e}"));
+                    }
+                    continue;
+                }
+            }
+        }
+
+        self.stats.total_errors.fetch_add(1, Ordering::Relaxed);
+        Err(UmmsError::Encoding(EncodingError::ApiCallFailed {
+            provider: "gemini".into(),
+            reason: format!(
+                "All {} attempts failed. Last error: {}",
+                self.max_retries + 1,
+                last_err.unwrap_or_else(|| "unknown".into())
+            ),
+        }))
+    }
+
     /// Call the generateContent endpoint with retry.
     #[instrument(skip(self, prompt), fields(model = %self.model_name))]
     async fn call_generate(&self, prompt: &str, max_tokens: Option<usize>) -> Result<String> {
@@ -580,6 +823,29 @@ impl ModelProvider for GeminiProvider {
 
     fn embedding_dimension(&self) -> Option<usize> {
         self.dimension
+    }
+
+    async fn embed_image(&self, image_base64: &str, mime_type: &str) -> Result<Vec<f32>> {
+        self.stats.total_requests.fetch_add(1, Ordering::Relaxed);
+
+        let vec = self.call_embed_image(image_base64, mime_type).await?;
+
+        if let Some(dim) = self.dimension {
+            if vec.len() != dim {
+                error!(expected = dim, got = vec.len(), "Dimension mismatch from Gemini image embed API");
+                return Err(UmmsError::Encoding(EncodingError::ApiCallFailed {
+                    provider: "gemini".into(),
+                    reason: format!("Expected {dim} dimensions, got {}", vec.len()),
+                }));
+            }
+        }
+
+        Ok(vec)
+    }
+
+    async fn transcribe_audio(&self, audio_base64: &str, mime_type: &str) -> Result<String> {
+        self.stats.total_requests.fetch_add(1, Ordering::Relaxed);
+        self.call_transcribe_audio(audio_base64, mime_type).await
     }
 }
 

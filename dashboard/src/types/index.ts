@@ -26,6 +26,7 @@ export interface MemoryEntry {
   created_at: string
   accessed_at: string
   access_count: number
+  user_rating: number | null
 }
 
 export type MemoryLayer =

@@ -261,12 +261,13 @@ impl AppState {
             let vec_arc: Arc<dyn umms_core::traits::VectorStore> = Arc::clone(&vector) as _;
             let graph_arc: Arc<dyn umms_core::traits::KnowledgeGraphStore> =
                 Arc::clone(&graph) as _;
-            let mut pipeline = RetrievalPipeline::new(
+            let mut pipeline = RetrievalPipeline::with_importance(
                 Arc::clone(&bm25),
                 vec_arc,
                 enc_arc,
                 graph_arc,
                 umms_config.retriever,
+                umms_config.importance,
             );
             // Attach EPA if tag store is available
             if let Some(ref ts) = tag_store {

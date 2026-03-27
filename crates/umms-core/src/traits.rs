@@ -70,7 +70,7 @@ pub trait VectorStore: Send + Sync {
     /// Get a single entry by ID.
     async fn get(&self, id: &MemoryId) -> Result<Option<MemoryEntry>>;
 
-    /// Update metadata fields (importance, tags, scope, agent_id, etc.)
+    /// Update metadata fields (importance, tags, scope, agent_id, user_rating, etc.)
     async fn update_metadata(
         &self,
         id: &MemoryId,
@@ -78,6 +78,14 @@ pub trait VectorStore: Send + Sync {
         tags: Option<Vec<String>>,
         scope: Option<IsolationScope>,
         agent_id: Option<AgentId>,
+    ) -> Result<()>;
+
+    /// Update the user feedback rating for importance scoring.
+    /// `rating` must be in `[-1.0, 1.0]`.
+    async fn update_user_rating(
+        &self,
+        id: &MemoryId,
+        rating: Option<f32>,
     ) -> Result<()>;
 
     /// Count entries for an agent (optionally including shared).

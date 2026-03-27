@@ -27,6 +27,9 @@ pub struct MemoryEntry {
     pub created_at: DateTime<Utc>,
     pub accessed_at: DateTime<Utc>,
     pub access_count: u64,
+    /// User feedback rating for importance scoring (-1.0 = not useful, 1.0 = very useful).
+    #[serde(default)]
+    pub user_rating: Option<f32>,
 }
 
 /// Builder for [`MemoryEntry`]. Required fields are constructor params;
@@ -138,6 +141,7 @@ impl MemoryEntryBuilder {
             created_at: now,
             accessed_at: now,
             access_count: 0,
+            user_rating: None,
         }
     }
 }

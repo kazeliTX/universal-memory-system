@@ -9,6 +9,8 @@
 
 use serde::Deserialize;
 
+use crate::importance::ImportanceConfig;
+
 /// Root configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -17,6 +19,7 @@ pub struct UmmsConfig {
     pub promotion: PromotionConfig,
     pub decay: DecayConfig,
     pub graph_evolution: GraphEvolutionConfig,
+    pub wkd: WkdConfig,
     pub encoder: EncoderConfig,
     pub retriever: RetrieverConfig,
     pub storage: StorageConfig,
@@ -30,6 +33,7 @@ pub struct UmmsConfig {
     pub chat: ChatConfig,
     pub diary: DiaryConfig,
     pub prompt: PromptConfig,
+    pub importance: ImportanceConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +124,40 @@ impl Default for GraphEvolutionConfig {
             min_similarity: 0.8,
             max_merge_per_run: 10,
             edge_boost_factor: 1.1,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WKD (Weighted Knowledge Distillation)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct WkdConfig {
+    /// Whether WKD compression is enabled.
+    pub enabled: bool,
+    /// Minimum cosine similarity to consider two memories as merge candidates.
+    pub similarity_threshold: f32,
+    /// Maximum memories to merge into one distilled memory.
+    pub max_cluster_size: usize,
+    /// Minimum memories in a cluster to trigger merging (singleton = no merge).
+    pub min_cluster_size: usize,
+    /// Maximum merges per run (prevent runaway).
+    pub max_merges_per_run: usize,
+    /// Whether to use LLM for summarization (false = concatenate).
+    pub use_llm_summary: bool,
+}
+
+impl Default for WkdConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            similarity_threshold: 0.85,
+            max_cluster_size: 5,
+            min_cluster_size: 2,
+            max_merges_per_run: 10,
+            use_llm_summary: false,
         }
     }
 }

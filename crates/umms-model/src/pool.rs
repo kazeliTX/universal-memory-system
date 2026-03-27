@@ -450,6 +450,94 @@ impl ModelPool {
         result
     }
 
+    /// Embed an image using the multimodal embedding model (with tracing).
+    ///
+    /// Requires a multimodal-capable embedding model (e.g., gemini-embedding-002).
+    /// Supported MIME types: image/png, image/jpeg, image/webp, image/gif.
+    pub async fn embed_image(&self, image_base64: &str, mime_type: &str) -> Result<Vec<f32>> {
+        let provider = self.provider_for(ModelTask::Embedding).ok_or_else(|| {
+            UmmsError::Internal("No embedding provider available".into())
+        })?;
+
+        let info = provider.info();
+        let model_id = self.model_id_for(ModelTask::Embedding).unwrap_or("unknown").to_owned();
+        let start = Instant::now();
+
+        let result = provider.embed_image(image_base64, mime_type).await;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+        let trace = ModelTrace {
+            id: new_trace_id(),
+            timestamp: Utc::now(),
+            model_id,
+            model_name: info.model_name,
+            provider: info.provider,
+            task: "embedding".to_owned(),
+            request_type: "embed_image".to_owned(),
+            input_preview: format!("[image {}] {} bytes base64", mime_type, image_base64.len()),
+            input_tokens_estimate: 0,
+            success: result.is_ok(),
+            error_message: result.as_ref().err().map(|e| format!("{e}")),
+            output_preview: None,
+            output_dimension: result.as_ref().ok().map(|v| v.len()),
+            output_tokens_estimate: None,
+            latency_ms,
+            retry_count: 0,
+            caller: "unknown".to_owned(),
+        };
+        self.trace_store.record(trace);
+
+        result
+    }
+
+    /// Transcribe audio to text using the generation model (with tracing).
+    ///
+    /// Supported MIME types: audio/wav, audio/mp3, audio/mpeg, audio/ogg, audio/flac.
+    pub async fn transcribe(&self, audio_base64: &str, mime_type: &str) -> Result<String> {
+        let provider = self.provider_for(ModelTask::Generation).ok_or_else(|| {
+            UmmsError::Internal("No generation provider available".into())
+        })?;
+
+        let info = provider.info();
+        let model_id = self.model_id_for(ModelTask::Generation).unwrap_or("unknown").to_owned();
+        let start = Instant::now();
+
+        let result = provider.transcribe_audio(audio_base64, mime_type).await;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+        let trace = ModelTrace {
+            id: new_trace_id(),
+            timestamp: Utc::now(),
+            model_id,
+            model_name: info.model_name,
+            provider: info.provider,
+            task: "generation".to_owned(),
+            request_type: "transcribe_audio".to_owned(),
+            input_preview: format!("[audio {}] {} bytes base64", mime_type, audio_base64.len()),
+            input_tokens_estimate: 0,
+            success: result.is_ok(),
+            error_message: result.as_ref().err().map(|e| format!("{e}")),
+            output_preview: result.as_ref().ok().map(|s| truncate_preview(s, 200)),
+            output_dimension: None,
+            output_tokens_estimate: result.as_ref().ok().map(|s| estimate_tokens(s)),
+            latency_ms,
+            retry_count: 0,
+            caller: "unknown".to_owned(),
+        };
+        self.trace_store.record(trace);
+
+        result
+    }
+
+    /// Embed audio: transcribe to text, then embed the text.
+    ///
+    /// Returns the transcription text and its embedding vector.
+    pub async fn embed_audio(&self, audio_base64: &str, mime_type: &str) -> Result<(String, Vec<f32>)> {
+        let text = self.transcribe(audio_base64, mime_type).await?;
+        let vector = self.embed(&text).await?;
+        Ok((text, vector))
+    }
+
     /// Get embedding dimension from the configured embedding model.
     pub fn embedding_dimension(&self) -> Option<usize> {
         self.provider_for(ModelTask::Embedding)

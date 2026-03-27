@@ -105,6 +105,63 @@ pub async fn vector_detail(
 }
 
 // ---------------------------------------------------------------------------
+// User feedback rating (ADR-013)
+// ---------------------------------------------------------------------------
+
+/// Request body for `POST /api/memories/:memory_id/rate`.
+#[derive(Debug, Deserialize)]
+pub struct RateMemoryRequest {
+    /// User feedback rating in `[-1.0, 1.0]`.
+    pub rating: f32,
+}
+
+/// Response for the rate endpoint.
+#[derive(Debug, serde::Serialize)]
+pub struct RateMemoryResponse {
+    pub memory_id: String,
+    pub user_rating: f32,
+}
+
+/// `POST /api/memories/:memory_id/rate`
+///
+/// Set the user feedback rating on a memory entry for importance scoring.
+pub async fn rate_memory(
+    State(state): State<Arc<AppState>>,
+    Path(memory_id): Path<String>,
+    Json(body): Json<RateMemoryRequest>,
+) -> Result<Json<RateMemoryResponse>, ApiError> {
+    let mid = MemoryId::from_str(&memory_id)
+        .map_err(|e| ApiError::BadRequest(format!("invalid memory id: {e}")))?;
+
+    // Validate rating range.
+    if !(-1.0..=1.0).contains(&body.rating) {
+        return Err(ApiError::BadRequest(
+            "rating must be between -1.0 and 1.0".to_owned(),
+        ));
+    }
+
+    // Verify memory exists.
+    state
+        .vector
+        .get(&mid)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("memory {memory_id} not found")))?;
+
+    // Update user_rating.
+    state
+        .vector
+        .update_user_rating(&mid, Some(body.rating))
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    Ok(Json(RateMemoryResponse {
+        memory_id,
+        user_rating: body.rating,
+    }))
+}
+
+// ---------------------------------------------------------------------------
 // Error handling
 // ---------------------------------------------------------------------------
 
