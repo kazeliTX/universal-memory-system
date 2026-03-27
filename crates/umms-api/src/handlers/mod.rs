@@ -14,5 +14,6 @@ pub mod files;
 pub mod graph;
 pub mod ingest;
 pub mod memory;
+pub mod models;
 pub mod system;
 pub mod tags;

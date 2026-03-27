@@ -112,6 +112,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         // EPA
         .route("/api/epa/analyze", post(handlers::epa::epa_analyze))
+        // Models (M5)
+        .route("/api/models", get(handlers::models::list_models))
         // Consolidation
         .route(
             "/api/consolidation/run/{agent_id}",

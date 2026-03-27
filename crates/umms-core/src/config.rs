@@ -23,6 +23,7 @@ pub struct UmmsConfig {
     pub epa: EpaConfig,
     pub reshaping: ReshapingConfig,
     pub observe: ObserveConfig,
+    pub model_pool: ModelPoolConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +153,109 @@ pub struct StorageConfig {
     pub context_db: String,
     /// Raw file storage directory.
     pub files_dir: String,
+}
+
+// ---------------------------------------------------------------------------
+// Model pool (M5)
+// ---------------------------------------------------------------------------
+
+/// Configuration for the model pool — manages multiple LLM backends.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ModelPoolConfig {
+    /// Model configurations.
+    pub models: Vec<ModelConfig>,
+    /// Task routing: which model ID to use for each task type.
+    pub routing: TaskRoutingConfig,
+}
+
+/// Configuration for a single model backend.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelConfig {
+    /// Unique identifier for this model (e.g., "gemini-embed", "gemini-flash").
+    pub id: String,
+    /// Provider name (e.g., "gemini", "openai").
+    pub provider: String,
+    /// Actual model name sent to the API (e.g., "gemini-embedding-001").
+    pub model_name: String,
+    /// Environment variable name holding the API key.
+    pub api_key_env: String,
+    /// Task types this model supports (e.g., ["embedding"], ["generation", "chat"]).
+    pub tasks: Vec<String>,
+    /// Embedding dimension (for embedding models).
+    pub dimension: Option<usize>,
+    /// Maximum output tokens (for generative models).
+    pub max_tokens: Option<usize>,
+    /// Request timeout in milliseconds.
+    pub timeout_ms: Option<u64>,
+    /// Maximum retry attempts on transient failures.
+    pub max_retries: Option<u32>,
+}
+
+/// Task-to-model routing configuration.
+///
+/// Each field is a model ID that should handle the corresponding task type.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct TaskRoutingConfig {
+    /// Model ID for embedding tasks.
+    pub embedding: String,
+    /// Model ID for text generation tasks.
+    pub generation: String,
+    /// Model ID for reranking tasks.
+    pub reranking: String,
+    /// Model ID for entity extraction tasks.
+    pub entity_extraction: String,
+    /// Model ID for chat/conversation tasks.
+    pub chat: String,
+}
+
+impl Default for ModelPoolConfig {
+    fn default() -> Self {
+        Self {
+            models: vec![
+                ModelConfig {
+                    id: "gemini-embed".to_owned(),
+                    provider: "gemini".to_owned(),
+                    model_name: "gemini-embedding-001".to_owned(),
+                    api_key_env: "GEMINI_API_KEY".to_owned(),
+                    tasks: vec!["embedding".to_owned()],
+                    dimension: Some(3072),
+                    max_tokens: None,
+                    timeout_ms: Some(10_000),
+                    max_retries: Some(2),
+                },
+                ModelConfig {
+                    id: "gemini-flash".to_owned(),
+                    provider: "gemini".to_owned(),
+                    model_name: "gemini-2.0-flash".to_owned(),
+                    api_key_env: "GEMINI_API_KEY".to_owned(),
+                    tasks: vec![
+                        "generation".to_owned(),
+                        "entity_extraction".to_owned(),
+                        "chat".to_owned(),
+                    ],
+                    dimension: None,
+                    max_tokens: Some(8192),
+                    timeout_ms: Some(30_000),
+                    max_retries: Some(2),
+                },
+            ],
+            routing: TaskRoutingConfig::default(),
+        }
+    }
+}
+
+impl Default for TaskRoutingConfig {
+    fn default() -> Self {
+        Self {
+            embedding: "gemini-embed".to_owned(),
+            generation: "gemini-flash".to_owned(),
+            reranking: "gemini-embed".to_owned(),
+            entity_extraction: "gemini-flash".to_owned(),
+            chat: "gemini-flash".to_owned(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -467,6 +571,10 @@ mod tests {
         assert_eq!(cfg.observe.log_format, "pretty");
         assert!(cfg.observe.log_level.contains("lance=warn"));
         assert!(cfg.observe.log_file.is_empty());
+        // model pool
+        assert_eq!(cfg.model_pool.models.len(), 2);
+        assert_eq!(cfg.model_pool.routing.embedding, "gemini-embed");
+        assert_eq!(cfg.model_pool.routing.generation, "gemini-flash");
     }
 
     #[test]

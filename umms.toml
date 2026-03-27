@@ -49,6 +49,33 @@ auto_extract = true
 # Tokenizer: "jieba" (Chinese+English), "llm" (LLM key term extraction), "whitespace" (English only)
 tokenizer = "jieba"
 
+[[model_pool.models]]
+id = "gemini-embed"
+provider = "gemini"
+model_name = "gemini-embedding-001"
+api_key_env = "GEMINI_API_KEY"
+tasks = ["embedding"]
+dimension = 3072
+timeout_ms = 10000
+max_retries = 2
+
+[[model_pool.models]]
+id = "gemini-flash"
+provider = "gemini"
+model_name = "gemini-2.0-flash"
+api_key_env = "GEMINI_API_KEY"
+tasks = ["generation", "entity_extraction", "chat"]
+max_tokens = 8192
+timeout_ms = 30000
+max_retries = 2
+
+[model_pool.routing]
+embedding = "gemini-embed"
+generation = "gemini-flash"
+reranking = "gemini-embed"
+entity_extraction = "gemini-flash"
+chat = "gemini-flash"
+
 [http]
 
 

@@ -381,6 +381,27 @@ pub struct PromoteResultResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Models (M5 model pool)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct ModelsResponse {
+    pub pool_available: bool,
+    pub models: Vec<ModelInfoResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelInfoResponse {
+    pub id: String,
+    pub provider: String,
+    pub model_name: String,
+    pub tasks: Vec<String>,
+    pub dimension: Option<usize>,
+    pub max_tokens: Option<usize>,
+    pub available: bool,
+}
+
+// ---------------------------------------------------------------------------
 // Seed
 // ---------------------------------------------------------------------------
 

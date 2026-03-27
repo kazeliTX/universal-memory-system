@@ -10,7 +10,7 @@ use std::time::Instant;
 use umms_core::config;
 use umms_core::error::UmmsError;
 use umms_core::traits::{Encoder, TagStore};
-use umms_encoder::{GeminiConfig, GeminiEncoder};
+use umms_encoder::{GeminiConfig, GeminiEncoder, ModelPool};
 use umms_observe::AuditLog;
 use umms_retriever::pipeline::RetrievalPipeline;
 use umms_retriever::recall::Bm25Index;
@@ -76,6 +76,9 @@ pub struct AppState {
     pub audit: AuditLog,
     /// Encoder is `None` when `GEMINI_API_KEY` is not set (dev mode without API).
     pub encoder: Option<Arc<GeminiEncoder>>,
+    /// Model pool for multi-model management (M5).
+    /// `None` when no model providers could be initialized.
+    pub model_pool: Option<Arc<ModelPool>>,
     /// BM25 full-text index (always available).
     pub bm25: Arc<Bm25Index>,
     /// Tag store is `None` when tag system is disabled.
@@ -114,6 +117,9 @@ impl AppState {
 
         let audit = AuditLog::with_capacity(config.audit_capacity);
 
+        // Load global config early so all subsystems can reference it.
+        let umms_config = config::load_config();
+
         // Encoder: attempt to initialise from env var. Not a fatal error if missing —
         // dev mode can run without an API key, using pre-seeded fake vectors.
         let encoder: Option<Arc<GeminiEncoder>> = match GeminiEncoder::new(GeminiConfig {
@@ -130,13 +136,34 @@ impl AppState {
             }
         };
 
+        // Model pool (M5): initialize from config, graceful degradation
+        let model_pool = {
+            let pool_config = &umms_config.model_pool;
+            match ModelPool::from_config(pool_config) {
+                Ok(pool) if !pool.is_empty() => {
+                    tracing::info!(
+                        models = pool.models().len(),
+                        "Model pool ready"
+                    );
+                    Some(Arc::new(pool))
+                }
+                Ok(_) => {
+                    tracing::warn!("Model pool has no available providers. Generation API will be disabled.");
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!("Model pool init failed: {e}. Generation API will be disabled.");
+                    None
+                }
+            }
+        };
+
         // BM25 index (always initialised, even without encoder)
         let bm25 = Arc::new(
             Bm25Index::new().map_err(|e| UmmsError::Internal(format!("BM25 init failed: {e}")))?,
         );
 
         // Tag store (initialise when tag system is enabled)
-        let umms_config = config::load_config();
         let tag_store: Option<Arc<dyn TagStore>> = if umms_config.tag.enabled {
             let tag_lance_path = config.data_dir.join(&umms_config.tag.vector_dir);
             let tag_cooc_path = config.data_dir.join(&umms_config.tag.cooc_db);
@@ -197,6 +224,7 @@ impl AppState {
             files,
             audit,
             encoder,
+            model_pool,
             bm25,
             tag_store,
             retriever,

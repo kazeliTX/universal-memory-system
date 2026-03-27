@@ -18,6 +18,7 @@ pub mod enums;
 pub mod error;
 pub mod ids;
 pub mod memory;
+pub mod model;
 pub mod tag;
 pub mod traits;
 pub mod types;
