@@ -6,8 +6,6 @@
 //! [`SqliteAgentContextManager`] and implements the full
 //! snapshot-evict-restore cycle.
 
-use std::str::FromStr;
-
 use chrono::Utc;
 
 use umms_core::error::Result;
@@ -131,6 +129,7 @@ impl AgentSwitcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
     use umms_core::types::{MemoryEntryBuilder, MemoryId, MemoryLayer, Modality};
 
     fn agent(name: &str) -> AgentId {

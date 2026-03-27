@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use async_trait::async_trait;
 use tokio::fs;
@@ -126,6 +125,7 @@ impl RawFileStore for LocalFileStore {
 mod tests {
     use super::*;
     use std::env;
+    use std::str::FromStr;
     use uuid::Uuid;
 
     /// Create a unique temporary directory for a test.

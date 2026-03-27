@@ -6,7 +6,6 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use tokio::sync::Mutex;
-use tracing::debug;
 
 use crate::task::{
     ExecutionStatus, Schedule, ScheduledTask, TaskExecution, TaskType,

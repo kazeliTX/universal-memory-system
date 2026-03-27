@@ -4,7 +4,6 @@ use tauri::State;
 
 use umms_api::response::*;
 use umms_api::AppState;
-use umms_core::traits::KnowledgeGraphStore;
 use umms_core::types::*;
 
 #[tauri::command]

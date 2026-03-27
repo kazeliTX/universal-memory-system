@@ -5,7 +5,6 @@
 //! indexed here via `index_entry`. The index lives in-memory by default
 //! but can be persisted to disk.
 
-use std::str::FromStr;
 use std::sync::Arc;
 
 use tantivy::collector::TopDocs;
@@ -16,7 +15,7 @@ use tokio::sync::Mutex;
 use tracing::instrument;
 
 use umms_core::error::{Result, UmmsError};
-use umms_core::types::{AgentId, MemoryId, ScoredMemory, ScoreSource, MemoryEntry};
+use umms_core::types::{AgentId, MemoryEntry};
 
 /// BM25 full-text search index.
 pub struct Bm25Index {
@@ -188,6 +187,7 @@ impl Bm25Index {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
     use umms_core::types::{MemoryEntryBuilder, Modality};
 
     fn make_entry(agent: &str, text: &str) -> MemoryEntry {

@@ -6,7 +6,6 @@
 //!
 //! Cache key is `(String, String)` representing `(agent_id, memory_id)`.
 
-use std::str::FromStr;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -249,6 +248,7 @@ impl MemoryCache for MokaMemoryCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
     use umms_core::types::{MemoryEntryBuilder, MemoryLayer, Modality};
 
     /// Helper: create a sensory-buffer (L0) entry.

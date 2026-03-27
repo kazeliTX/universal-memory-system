@@ -6,7 +6,6 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::Json;
 
-use umms_core::traits::Encoder;
 use umms_core::types::AgentId;
 use umms_retriever::epa::EpaAnalyzer;
 

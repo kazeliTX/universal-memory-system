@@ -6,7 +6,6 @@ use axum::extract::{Path, Query, State};
 use axum::response::Json;
 use serde::Deserialize;
 
-use umms_core::traits::KnowledgeGraphStore;
 use umms_core::types::*;
 
 use crate::handlers::memory::ApiError;

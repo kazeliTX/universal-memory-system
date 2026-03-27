@@ -4,7 +4,6 @@
 //! Encoding and model management service for UMMS.
 //!
 //! Provides:
-//! - [`GeminiEncoder`] — Google Gemini embedding API backend (legacy, standalone)
 //! - [`GeminiProvider`] — Gemini model provider supporting embedding + generation
 //! - [`ModelPool`] — Centralized registry routing requests to the right model
 //!
@@ -16,6 +15,5 @@ pub mod gemini;
 pub mod gemini_provider;
 pub mod pool;
 
-pub use gemini::{GeminiConfig, GeminiEncoder, EncoderStatsSnapshot};
 pub use gemini_provider::GeminiProvider;
 pub use pool::ModelPool;

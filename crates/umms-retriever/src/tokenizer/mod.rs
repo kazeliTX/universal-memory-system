@@ -19,8 +19,6 @@ pub use jieba_tokenizer::JiebaTokenizer;
 pub use llm_tokenizer::LlmTokenizer;
 pub use whitespace_tokenizer::WhitespaceTokenizer;
 
-use umms_core::error::Result;
-
 /// Trait for text segmentation / key term extraction.
 ///
 /// Implementations must be `Send + Sync` for use in async contexts.

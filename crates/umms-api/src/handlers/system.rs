@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::response::Json;
 
-use umms_core::traits::{Encoder, KnowledgeGraphStore, MemoryCache, VectorStore};
+use umms_core::traits::{MemoryCache, VectorStore};
 use crate::response::ClearResponse;
 use umms_core::types::*;
 use umms_observe::{AuditEventBuilder, AuditEventType};

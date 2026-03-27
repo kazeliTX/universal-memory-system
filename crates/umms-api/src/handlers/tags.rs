@@ -7,7 +7,6 @@ use axum::extract::{Path, State};
 use axum::Json;
 
 use umms_core::tag::Tag;
-use umms_core::traits::Encoder;
 use umms_core::types::{AgentId, TagId};
 
 use crate::AppState;

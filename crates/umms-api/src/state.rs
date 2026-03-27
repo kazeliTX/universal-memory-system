@@ -10,7 +10,7 @@ use std::time::Instant;
 use umms_core::config;
 use umms_core::error::UmmsError;
 use umms_core::traits::{Encoder, KnowledgeGraphStore, TagStore};
-use umms_encoder::{GeminiConfig, GeminiEncoder, ModelPool};
+use umms_encoder::ModelPool;
 use umms_observe::AuditLog;
 use umms_persona::PersonaStore;
 use umms_retriever::pipeline::RetrievalPipeline;
@@ -137,7 +137,7 @@ impl AppState {
 
         // Encoder: attempt to initialise from env var. Not a fatal error if missing —
         // dev mode can run without an API key, using pre-seeded fake vectors.
-        // Model pool (M5): unified model management — replaces legacy GeminiEncoder
+        // Model pool (M5): unified model management
         let model_pool = {
             let pool_config = &umms_config.model_pool;
             match ModelPool::from_config(pool_config) {

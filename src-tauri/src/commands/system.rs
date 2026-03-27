@@ -4,7 +4,7 @@ use tauri::State;
 
 use umms_api::response::*;
 use umms_api::AppState;
-use umms_core::traits::{KnowledgeGraphStore, MemoryCache, VectorStore};
+use umms_core::traits::{MemoryCache, VectorStore};
 use umms_core::types::*;
 
 #[tauri::command]

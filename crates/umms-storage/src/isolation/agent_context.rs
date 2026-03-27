@@ -4,7 +4,6 @@
 //! agent context can be suspended and resumed across switches.
 
 use std::path::Path;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -233,6 +232,7 @@ impl<T> OptionalRow<T> for std::result::Result<T, rusqlite::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
     use umms_core::traits::AgentContextManager;
     use umms_core::types::{MemoryEntryBuilder, MemoryLayer, Modality};
 

@@ -9,7 +9,6 @@ use umms_api::response::{
 };
 use umms_api::AppState;
 use umms_core::tag::Tag;
-use umms_core::traits::Encoder;
 use umms_core::types::{AgentId, TagId};
 use umms_retriever::epa::EpaAnalyzer;
 
