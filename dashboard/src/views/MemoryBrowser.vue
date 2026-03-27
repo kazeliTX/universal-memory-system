@@ -24,21 +24,21 @@ const epaResult = ref<EpaAnalyzeResponse | null>(null)
 
 const columns: DataTableColumns<MemoryEntry> = [
   { title: 'ID', key: 'id', width: 100, ellipsis: { tooltip: true }, render: (row) => row.id.slice(0, 8) + '\u2026' },
-  { title: 'Content', key: 'content_text', ellipsis: { tooltip: true } },
-  { title: 'Importance', key: 'importance', width: 100, render: (row) => row.importance.toFixed(2) },
-  { title: 'Scope', key: 'scope', width: 90 },
-  { title: 'Modality', key: 'modality', width: 90 },
-  { title: 'Tags', key: 'tags', width: 150, render: (row) => row.tags.join(', ') },
-  { title: 'Created', key: 'created_at', width: 180, render: (row) => new Date(row.created_at).toLocaleString() },
+  { title: '内容', key: 'content_text', ellipsis: { tooltip: true } },
+  { title: '重要度', key: 'importance', width: 100, render: (row) => row.importance.toFixed(2) },
+  { title: '作用域', key: 'scope', width: 90 },
+  { title: '模态', key: 'modality', width: 90 },
+  { title: '标签', key: 'tags', width: 150, render: (row) => row.tags.join(', ') },
+  { title: '创建时间', key: 'created_at', width: 180, render: (row) => new Date(row.created_at).toLocaleString() },
 ]
 
 // Source tag colors
 function sourceTag(source: string) {
   const map: Record<string, { type: any; label: string }> = {
-    both: { type: 'success', label: 'BM25+Vec' },
-    bm25_only: { type: 'warning', label: 'BM25' },
-    vector_only: { type: 'info', label: 'Vector' },
-    diffusion: { type: 'default', label: 'Diffusion' },
+    both: { type: 'success', label: 'BM25+向量' },
+    bm25_only: { type: 'warning', label: '仅BM25' },
+    vector_only: { type: 'info', label: '仅向量' },
+    diffusion: { type: 'default', label: '扩散' },
     unknown: { type: 'default', label: '?' },
   }
   return map[source] ?? map.unknown!
@@ -46,13 +46,13 @@ function sourceTag(source: string) {
 
 const searchColumns: DataTableColumns<SearchHit> = [
   {
-    title: 'Score',
+    title: '分数',
     key: 'score',
     width: 80,
     render: (row) => row.score.toFixed(4),
   },
   {
-    title: 'Source',
+    title: '来源',
     key: 'source',
     width: 110,
     render: (row) => {
@@ -62,12 +62,12 @@ const searchColumns: DataTableColumns<SearchHit> = [
       if (row.vector_rank) parts.push(`Vec #${row.vector_rank}`)
       return h(NTooltip, null, {
         trigger: () => h(NTag, { type: tag.type, size: 'small', round: true }, () => tag.label),
-        default: () => parts.join(' | ') || 'Unknown source',
+        default: () => parts.join(' | ') || '未知来源',
       })
     },
   },
   {
-    title: 'Contribution',
+    title: '贡献度',
     key: 'contribution',
     width: 160,
     render: (row) => {
@@ -84,19 +84,19 @@ const searchColumns: DataTableColumns<SearchHit> = [
     },
   },
   {
-    title: 'Agent',
+    title: '智能体',
     key: 'agent',
     width: 90,
     render: (row) => row.entry.agent_id,
   },
   {
-    title: 'Content',
+    title: '内容',
     key: 'content',
     ellipsis: { tooltip: true },
     render: (row) => row.entry.content_text ?? '-',
   },
   {
-    title: 'Scope',
+    title: '作用域',
     key: 'scope',
     width: 80,
     render: (row) => row.entry.scope,
@@ -146,7 +146,7 @@ watch([selectedAgent, selectedLayer], refresh, { immediate: true })
 <template>
   <NSpace vertical :size="16">
     <NSpace align="center" :size="16">
-      <h2 style="margin: 0; color: #e6edf3">Memory Browser</h2>
+      <h2 style="margin: 0; color: #e6edf3">记忆浏览</h2>
       <NSelect
         v-model:value="selectedAgent"
         :options="agents.map(a => ({ label: a, value: a }))"
@@ -154,18 +154,18 @@ watch([selectedAgent, selectedLayer], refresh, { immediate: true })
         size="small"
       />
       <NRadioGroup v-model:value="selectedLayer" size="small">
-        <NRadioButton value="cache">Cache (L0/L1)</NRadioButton>
-        <NRadioButton value="vector">Vector (L2)</NRadioButton>
+        <NRadioButton value="cache">缓存 (L0/L1)</NRadioButton>
+        <NRadioButton value="vector">向量 (L2)</NRadioButton>
       </NRadioGroup>
-      <NTag type="info" size="small">{{ totalCount }} entries</NTag>
+      <NTag type="info" size="small">{{ totalCount }} 条</NTag>
     </NSpace>
 
     <!-- Semantic Search -->
-    <NCard title="Hybrid Search" size="small">
+    <NCard title="混合检索" size="small">
       <NSpace :size="12">
         <NInput
           v-model:value="searchQuery"
-          placeholder="Enter a natural language query..."
+          placeholder="输入自然语言查询..."
           style="width: 500px"
           size="small"
           @keydown.enter="handleSearch"
@@ -177,7 +177,7 @@ watch([selectedAgent, selectedLayer], refresh, { immediate: true })
           @click="handleSearch"
           :disabled="!searchQuery.trim()"
         >
-          Search
+          搜索
         </NButton>
       </NSpace>
 
@@ -186,48 +186,48 @@ watch([selectedAgent, selectedLayer], refresh, { immediate: true })
         <!-- Stage Timeline -->
         <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: stretch">
           <NCard size="small" style="flex: 1; text-align: center">
-            <div style="color: #999; font-size: 11px">Encode</div>
+            <div style="color: #999; font-size: 11px">编码</div>
             <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ searchResult.latency.encode_ms }}ms</div>
           </NCard>
           <div style="display: flex; align-items: center; color: #555">&rarr;</div>
           <NCard size="small" style="flex: 1; text-align: center">
-            <div style="color: #999; font-size: 11px">Recall</div>
+            <div style="color: #999; font-size: 11px">召回</div>
             <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ searchResult.latency.recall_ms }}ms</div>
-            <div style="color: #666; font-size: 11px">{{ searchResult.pipeline.recall_count }} hits</div>
+            <div style="color: #666; font-size: 11px">{{ searchResult.pipeline.recall_count }} 命中</div>
           </NCard>
           <div style="display: flex; align-items: center; color: #555">&rarr;</div>
           <NCard size="small" style="flex: 1; text-align: center">
-            <div style="color: #999; font-size: 11px">Rerank</div>
+            <div style="color: #999; font-size: 11px">精排</div>
             <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ searchResult.latency.rerank_ms }}ms</div>
-            <div style="color: #666; font-size: 11px">{{ searchResult.pipeline.rerank_count }} kept</div>
+            <div style="color: #666; font-size: 11px">{{ searchResult.pipeline.rerank_count }} 保留</div>
           </NCard>
           <div style="display: flex; align-items: center; color: #555">&rarr;</div>
           <NCard size="small" style="flex: 1; text-align: center">
-            <div style="color: #999; font-size: 11px">Diffusion</div>
+            <div style="color: #999; font-size: 11px">扩散</div>
             <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ searchResult.latency.diffusion_ms }}ms</div>
-            <div style="color: #666; font-size: 11px">+{{ searchResult.pipeline.diffusion_count }} found</div>
+            <div style="color: #666; font-size: 11px">+{{ searchResult.pipeline.diffusion_count }} 发现</div>
           </NCard>
           <div style="display: flex; align-items: center; color: #555">&rarr;</div>
           <NCard size="small" style="flex: 1; text-align: center; border-color: #18a058">
-            <div style="color: #18a058; font-size: 11px">Total</div>
+            <div style="color: #18a058; font-size: 11px">总计</div>
             <div style="color: #18a058; font-size: 16px; font-weight: bold">{{ searchResult.latency.total_ms }}ms</div>
-            <div style="color: #666; font-size: 11px">{{ searchResult.pipeline.final_count }} results</div>
+            <div style="color: #666; font-size: 11px">{{ searchResult.pipeline.final_count }} 条结果</div>
           </NCard>
         </div>
 
         <!-- Source Distribution -->
         <div style="display: flex; gap: 16px; margin-bottom: 12px">
           <NTag type="success" size="small" round>
-            BM25+Vec: {{ searchResult.pipeline.both }}
+            BM25+向量: {{ searchResult.pipeline.both }}
           </NTag>
           <NTag type="warning" size="small" round>
-            BM25 only: {{ searchResult.pipeline.bm25_only }}
+            仅BM25: {{ searchResult.pipeline.bm25_only }}
           </NTag>
           <NTag type="info" size="small" round>
-            Vec only: {{ searchResult.pipeline.vector_only }}
+            仅向量: {{ searchResult.pipeline.vector_only }}
           </NTag>
           <NTag v-if="searchResult.pipeline.diffusion_count > 0" size="small" round>
-            Diffusion: {{ searchResult.pipeline.diffusion_count }}
+            扩散: {{ searchResult.pipeline.diffusion_count }}
           </NTag>
         </div>
 
@@ -235,19 +235,19 @@ watch([selectedAgent, selectedLayer], refresh, { immediate: true })
         <div v-if="epaResult" style="margin-bottom: 12px">
           <div style="display: flex; gap: 8px; align-items: stretch">
             <NCard size="small" style="flex: 1; text-align: center">
-              <div style="color: #999; font-size: 11px">Logic Depth</div>
+              <div style="color: #999; font-size: 11px">逻辑深度</div>
               <div style="color: #58a6ff; font-size: 16px; font-weight: bold">{{ epaResult.logic_depth.toFixed(3) }}</div>
             </NCard>
             <NCard size="small" style="flex: 1; text-align: center">
-              <div style="color: #999; font-size: 11px">Cross-Domain</div>
+              <div style="color: #999; font-size: 11px">跨域共振</div>
               <div style="color: #d2a8ff; font-size: 16px; font-weight: bold">{{ epaResult.cross_domain_resonance.toFixed(3) }}</div>
             </NCard>
             <NCard size="small" style="flex: 1; text-align: center">
-              <div style="color: #999; font-size: 11px">Alpha</div>
+              <div style="color: #999; font-size: 11px">融合系数</div>
               <div style="color: #f0a020; font-size: 16px; font-weight: bold">{{ epaResult.alpha.toFixed(3) }}</div>
             </NCard>
             <NCard size="small" style="flex: 1; text-align: center">
-              <div style="color: #999; font-size: 11px">Axes</div>
+              <div style="color: #999; font-size: 11px">语义轴</div>
               <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ epaResult.num_semantic_axes }}</div>
             </NCard>
           </div>
@@ -274,7 +274,7 @@ watch([selectedAgent, selectedLayer], refresh, { immediate: true })
           striped
           size="small"
         />
-        <NEmpty v-else description="No matching memories found." />
+        <NEmpty v-else description="未找到匹配的记忆" />
       </div>
     </NCard>
 
@@ -290,7 +290,7 @@ watch([selectedAgent, selectedLayer], refresh, { immediate: true })
           striped
           size="small"
         />
-        <NEmpty v-else description="No entries. Try seeding demo data." />
+        <NEmpty v-else description="暂无条目，请先填充演示数据。" />
       </NSpin>
     </NCard>
   </NSpace>

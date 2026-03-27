@@ -53,15 +53,15 @@ function clearAll() {
 <template>
   <NSpace vertical :size="16">
     <NSpace align="center" :size="16">
-      <h2 style="margin: 0; color: #e6edf3">Document Ingest</h2>
+      <h2 style="margin: 0; color: #e6edf3">文档摄入</h2>
     </NSpace>
 
     <!-- Input -->
-    <NCard title="Document Text" size="small">
+    <NCard title="文档文本" size="small">
       <NInput
         v-model:value="documentText"
         type="textarea"
-        placeholder="Paste your document text here..."
+        placeholder="在此粘贴文档文本..."
         :rows="12"
         :disabled="ingesting"
       />
@@ -72,39 +72,39 @@ function clearAll() {
           :disabled="!documentText.trim()"
           @click="handleIngest"
         >
-          Ingest Document
+          摄入文档
         </NButton>
-        <NButton @click="clearAll" :disabled="ingesting">Clear</NButton>
+        <NButton @click="clearAll" :disabled="ingesting">清空</NButton>
         <NTag v-if="documentText" size="small" type="default">
-          {{ documentText.length.toLocaleString() }} chars
+          {{ documentText.length.toLocaleString() }} 字符
         </NTag>
       </NSpace>
     </NCard>
 
     <!-- Error -->
-    <NAlert v-if="error" type="error" title="Ingestion Failed" closable @close="error = null">
+    <NAlert v-if="error" type="error" title="摄入失败" closable @close="error = null">
       {{ error }}
     </NAlert>
 
     <!-- Result -->
     <template v-if="result">
       <!-- Stats -->
-      <NCard title="Ingestion Result" size="small">
+      <NCard title="摄入结果" size="small">
         <NGrid :cols="5" :x-gap="12">
-          <NGi><NStatistic label="Chunks Created" :value="result.chunks_created" /></NGi>
-          <NGi><NStatistic label="Chunks Stored" :value="result.chunks_stored" /></NGi>
+          <NGi><NStatistic label="创建分块数" :value="result.chunks_created" /></NGi>
+          <NGi><NStatistic label="存储分块数" :value="result.chunks_stored" /></NGi>
           <NGi>
-            <NStatistic label="Total Time">
+            <NStatistic label="总耗时">
               <template #default>{{ result.total_ms }}<span style="font-size:12px;color:#999">ms</span></template>
             </NStatistic>
           </NGi>
           <NGi>
-            <NStatistic label="Encode Time">
+            <NStatistic label="编码耗时">
               <template #default>{{ result.latency.encode_ms }}<span style="font-size:12px;color:#999">ms</span></template>
             </NStatistic>
           </NGi>
           <NGi>
-            <NStatistic label="Store Time">
+            <NStatistic label="存储耗时">
               <template #default>{{ result.latency.store_ms }}<span style="font-size:12px;color:#999">ms</span></template>
             </NStatistic>
           </NGi>
@@ -113,46 +113,46 @@ function clearAll() {
         <!-- Pipeline Breakdown -->
         <div style="display: flex; gap: 8px; margin-top: 16px; align-items: stretch">
           <NCard size="small" style="flex: 1; text-align: center">
-            <div style="color: #999; font-size: 11px">Chunk</div>
+            <div style="color: #999; font-size: 11px">分块</div>
             <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ result.latency.chunk_ms }}ms</div>
           </NCard>
           <div style="display: flex; align-items: center; color: #555">&rarr;</div>
           <NCard size="small" style="flex: 1; text-align: center">
-            <div style="color: #999; font-size: 11px">Skeleton</div>
+            <div style="color: #999; font-size: 11px">骨架</div>
             <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ result.latency.skeleton_ms }}ms</div>
           </NCard>
           <div style="display: flex; align-items: center; color: #555">&rarr;</div>
           <NCard size="small" style="flex: 1; text-align: center">
-            <div style="color: #999; font-size: 11px">Encode</div>
+            <div style="color: #999; font-size: 11px">编码</div>
             <div style="color: #e6edf3; font-size: 16px; font-weight: bold">{{ result.latency.encode_ms }}ms</div>
           </NCard>
           <div style="display: flex; align-items: center; color: #555">&rarr;</div>
           <NCard size="small" style="flex: 1; text-align: center; border-color: #18a058">
-            <div style="color: #18a058; font-size: 11px">Store</div>
+            <div style="color: #18a058; font-size: 11px">存储</div>
             <div style="color: #18a058; font-size: 16px; font-weight: bold">{{ result.latency.store_ms }}ms</div>
-            <div style="color: #666; font-size: 11px">{{ result.chunks_stored }} entries</div>
+            <div style="color: #666; font-size: 11px">{{ result.chunks_stored }} 条</div>
           </NCard>
         </div>
       </NCard>
 
       <!-- Document Skeleton -->
-      <NCard title="Document Skeleton" size="small">
+      <NCard title="文档骨架" size="small">
         <NSpace :size="8" vertical>
           <div>
-            <NTag type="primary" size="small">Title</NTag>
+            <NTag type="primary" size="small">标题</NTag>
             <span style="color: #e6edf3; margin-left: 8px">{{ result.title }}</span>
           </div>
           <div>
-            <NTag type="info" size="small">Summary</NTag>
+            <NTag type="info" size="small">摘要</NTag>
             <span style="color: #ccc; margin-left: 8px; font-size: 13px">{{ result.summary }}</span>
           </div>
         </NSpace>
       </NCard>
 
       <!-- Chunk Details -->
-      <NCard title="Chunk Visualization" size="small">
+      <NCard title="分块可视化" size="small">
         <div style="color: #999; font-size: 12px; margin-bottom: 8px">
-          {{ result.chunks.length }} chunks | Click to expand context details
+          {{ result.chunks.length }} 个分块 | 点击展开上下文详情
         </div>
         <NCollapse>
           <NCollapseItem
@@ -170,7 +170,7 @@ function clearAll() {
             <!-- Context prefix -->
             <div style="margin-bottom: 8px">
               <div style="color: #f0a020; font-size: 11px; font-weight: bold; margin-bottom: 4px">
-                Context Prefix (injected)
+                上下文前缀（注入）
               </div>
               <div style="
                 background: #1a1a2e;
@@ -187,7 +187,7 @@ function clearAll() {
             <!-- Original text -->
             <div style="margin-bottom: 8px">
               <div style="color: #18a058; font-size: 11px; font-weight: bold; margin-bottom: 4px">
-                Original Text
+                原始文本
               </div>
               <div style="
                 background: #0d1117;

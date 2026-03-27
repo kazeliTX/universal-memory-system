@@ -67,21 +67,21 @@ onUnmounted(() => clearInterval(timer))
 <template>
   <NSpace vertical :size="24">
     <NSpace justify="space-between" align="center">
-      <h2 style="margin: 0; color: #e6edf3">System Overview</h2>
+      <h2 style="margin: 0; color: #e6edf3">系统概览</h2>
       <NSpace>
         <NButton @click="handleSeed" :loading="seeding" type="primary" ghost size="small">
-          Seed Demo Data
+          填充演示数据
         </NButton>
         <NButton @click="handleClear" :loading="clearing" type="error" ghost size="small">
-          Clear All Data
+          清空所有数据
         </NButton>
         <NTag v-if="seedResult" type="success" size="small">
-          Seeded: {{ seedResult.memories }} memories, {{ seedResult.nodes }} nodes
+          已填充: {{ seedResult.memories }} 条记忆, {{ seedResult.nodes }} 个节点
         </NTag>
       </NSpace>
     </NSpace>
 
-    <NCard v-if="error" title="Connection Error" size="small">
+    <NCard v-if="error" title="连接错误" size="small">
       <NTag type="error">{{ error }}</NTag>
     </NCard>
 
@@ -100,66 +100,66 @@ onUnmounted(() => clearInterval(timer))
     <!-- Stats -->
     <NGrid :cols="4" :x-gap="16" :y-gap="16" v-if="stats">
       <NGi>
-        <NCard title="Cache" size="small">
-          <NStatistic label="L0 (Sensory)" :value="stats.cache.l0_entries" />
-          <NStatistic label="L1 (Working)" :value="stats.cache.l1_entries" />
+        <NCard title="缓存" size="small">
+          <NStatistic label="L0 (感知层)" :value="stats.cache.l0_entries" />
+          <NStatistic label="L1 (工作层)" :value="stats.cache.l1_entries" />
         </NCard>
       </NGi>
       <NGi>
-        <NCard title="Vector Store (L2)" size="small">
-          <NStatistic label="Total Entries" :value="stats.vector.total_entries" />
+        <NCard title="向量存储 (L2)" size="small">
+          <NStatistic label="总条目数" :value="stats.vector.total_entries" />
         </NCard>
       </NGi>
       <NGi>
-        <NCard title="Knowledge Graph (L3)" size="small">
-          <NStatistic label="Nodes" :value="stats.graph.total_nodes" />
-          <NStatistic label="Edges" :value="stats.graph.total_edges" />
-          <NStatistic label="Shared Nodes" :value="stats.graph.shared_nodes" />
+        <NCard title="图谱存储 (L3)" size="small">
+          <NStatistic label="节点数" :value="stats.graph.total_nodes" />
+          <NStatistic label="边数" :value="stats.graph.total_edges" />
+          <NStatistic label="共享节点" :value="stats.graph.shared_nodes" />
         </NCard>
       </NGi>
       <NGi>
-        <NCard title="System" size="small">
-          <NStatistic label="Uptime" :value="health ? formatUptime(health.uptime_secs) : '-'" />
-          <NStatistic label="Agents" :value="stats.agents.length" />
+        <NCard title="系统" size="small">
+          <NStatistic label="运行时间" :value="health ? formatUptime(health.uptime_secs) : '-'" />
+          <NStatistic label="智能体" :value="stats.agents.length" />
         </NCard>
       </NGi>
     </NGrid>
 
     <!-- Encoder -->
-    <NCard title="Encoder (M2)" size="small" v-if="encoder">
+    <NCard title="编码器 (M2)" size="small" v-if="encoder">
       <NGrid :cols="5" :x-gap="16">
         <NGi>
           <NSpace align="center" :size="8">
             <NBadge :type="encoder.available ? 'success' : 'error'" dot />
-            <NStatistic label="Status" :value="encoder.available ? 'Online' : 'Offline'" />
+            <NStatistic label="状态" :value="encoder.available ? '在线' : '离线'" />
           </NSpace>
         </NGi>
         <NGi>
-          <NStatistic label="Model" :value="encoder.model ?? '-'" />
+          <NStatistic label="模型" :value="encoder.model ?? '-'" />
         </NGi>
         <NGi>
-          <NStatistic label="Dimension" :value="encoder.dimension ?? '-'" />
+          <NStatistic label="维度" :value="encoder.dimension ?? '-'" />
         </NGi>
         <NGi>
-          <NStatistic label="Texts Encoded" :value="encoder.total_texts_encoded" />
+          <NStatistic label="已编码文本" :value="encoder.total_texts_encoded" />
         </NGi>
         <NGi>
-          <NStatistic label="Avg Latency" :value="encoder.avg_latency_ms > 0 ? encoder.avg_latency_ms.toFixed(0) + ' ms' : '-'" />
+          <NStatistic label="平均延迟" :value="encoder.avg_latency_ms > 0 ? encoder.avg_latency_ms.toFixed(0) + ' ms' : '-'" />
         </NGi>
       </NGrid>
       <NSpace style="margin-top: 12px" :size="12" v-if="encoder.available">
-        <NTag type="info" size="small">Requests: {{ encoder.total_requests }}</NTag>
+        <NTag type="info" size="small">请求数: {{ encoder.total_requests }}</NTag>
         <NTag :type="encoder.total_errors > 0 ? 'error' : 'success'" size="small">
-          Errors: {{ encoder.total_errors }}
+          错误数: {{ encoder.total_errors }}
         </NTag>
         <NTag :type="encoder.total_retries > 0 ? 'warning' : 'success'" size="small">
-          Retries: {{ encoder.total_retries }}
+          重试数: {{ encoder.total_retries }}
         </NTag>
       </NSpace>
     </NCard>
 
     <!-- Agent Cards -->
-    <NCard title="Agents" size="small" v-if="stats">
+    <NCard title="智能体" size="small" v-if="stats">
       <NSpace>
         <NTag v-for="agent in stats.agents" :key="agent" type="info" size="medium" round>
           {{ agent }}

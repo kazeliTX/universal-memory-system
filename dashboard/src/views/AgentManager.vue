@@ -116,30 +116,30 @@ onMounted(loadAgents)
 
 const columns = [
   {
-    title: 'Name',
+    title: '名称',
     key: 'name',
     width: 140,
   },
   {
-    title: 'Role',
+    title: '角色',
     key: 'role',
     width: 180,
   },
   {
-    title: 'Expertise',
+    title: '专长领域',
     key: 'expertise',
     render(row: AgentPersonaResponse) {
-      return row.expertise.length + ' tags'
+      return row.expertise.length + ' 个标签'
     },
     width: 100,
   },
   {
-    title: 'Vectors',
+    title: '向量数',
     key: 'vector_count',
     width: 80,
   },
   {
-    title: 'Cache',
+    title: '缓存',
     key: 'cache',
     width: 80,
     render(row: AgentPersonaResponse) {
@@ -152,19 +152,19 @@ const columns = [
 <template>
   <NSpace vertical :size="16">
     <NSpace align="center" justify="space-between">
-      <h2 style="margin: 0; color: #e6edf3">Agent Manager (M7)</h2>
+      <h2 style="margin: 0; color: #e6edf3">智能体管理 (M7)</h2>
       <NSpace :size="8">
-        <NButton size="small" @click="loadAgents" :loading="loading">Refresh</NButton>
-        <NButton type="primary" size="small" @click="showCreate = true">Create Agent</NButton>
+        <NButton size="small" @click="loadAgents" :loading="loading">刷新</NButton>
+        <NButton type="primary" size="small" @click="showCreate = true">创建智能体</NButton>
       </NSpace>
     </NSpace>
 
-    <NAlert v-if="error" type="error" title="Error" closable @close="error = null">
+    <NAlert v-if="error" type="error" title="错误" closable @close="error = null">
       {{ error }}
     </NAlert>
 
     <!-- Agent table -->
-    <NCard title="Agents" size="small">
+    <NCard title="智能体" size="small">
       <NDataTable
         :columns="columns"
         :data="agents"
@@ -177,19 +177,19 @@ const columns = [
         size="small"
         :bordered="false"
       />
-      <NEmpty v-if="!loading && agents.length === 0" description="No agents found" />
+      <NEmpty v-if="!loading && agents.length === 0" description="未找到智能体" />
     </NCard>
 
     <!-- Detail panel -->
     <NCard v-if="selectedAgent" :title="selectedAgent.name" size="small">
       <template #header-extra>
         <NSpace :size="8">
-          <NButton size="tiny" @click="openEdit(selectedAgent!)">Edit</NButton>
+          <NButton size="tiny" @click="openEdit(selectedAgent!)">编辑</NButton>
           <NPopconfirm @positive-click="handleDelete(selectedAgent!.agent_id)">
             <template #trigger>
-              <NButton size="tiny" type="error">Delete</NButton>
+              <NButton size="tiny" type="error">删除</NButton>
             </template>
-            Delete agent "{{ selectedAgent.agent_id }}"? This will not remove its memories.
+            删除智能体 "{{ selectedAgent.agent_id }}"？这不会移除其记忆数据。
           </NPopconfirm>
         </NSpace>
       </template>
@@ -203,7 +203,7 @@ const columns = [
         <div style="color: #999; font-size: 13px">{{ selectedAgent.description }}</div>
 
         <div>
-          <div style="color: #666; font-size: 12px; margin-bottom: 4px">Expertise</div>
+          <div style="color: #666; font-size: 12px; margin-bottom: 4px">专长领域</div>
           <NSpace :size="4">
             <NTag
               v-for="tag in selectedAgent.expertise"
@@ -217,34 +217,34 @@ const columns = [
         </div>
 
         <NGrid :cols="4" :x-gap="12">
-          <NGi><NStatistic label="L0 Cache" :value="selectedAgent.cache_l0" /></NGi>
-          <NGi><NStatistic label="L1 Cache" :value="selectedAgent.cache_l1" /></NGi>
-          <NGi><NStatistic label="Vectors" :value="selectedAgent.vector_count" /></NGi>
+          <NGi><NStatistic label="L0 缓存" :value="selectedAgent.cache_l0" /></NGi>
+          <NGi><NStatistic label="L1 缓存" :value="selectedAgent.cache_l1" /></NGi>
+          <NGi><NStatistic label="向量数" :value="selectedAgent.vector_count" /></NGi>
           <NGi>
             <div>
-              <div style="color: #999; font-size: 12px; margin-bottom: 4px">Created</div>
+              <div style="color: #999; font-size: 12px; margin-bottom: 4px">创建时间</div>
               <div style="font-size: 13px">{{ selectedAgent.created_at ? new Date(selectedAgent.created_at).toLocaleDateString() : '-' }}</div>
             </div>
           </NGi>
         </NGrid>
 
         <!-- Retrieval config overrides -->
-        <NCard title="Retrieval Config Overrides" size="small" embedded>
+        <NCard title="检索配置覆盖" size="small" embedded>
           <NGrid :cols="4" :x-gap="12">
             <NGi>
-              <div style="color: #999; font-size: 12px">BM25 Weight</div>
+              <div style="color: #999; font-size: 12px">BM25权重</div>
               <div>{{ selectedAgent.retrieval_config.bm25_weight ?? 'default' }}</div>
             </NGi>
             <NGi>
-              <div style="color: #999; font-size: 12px">Min Score</div>
+              <div style="color: #999; font-size: 12px">最低分数</div>
               <div>{{ selectedAgent.retrieval_config.min_score ?? 'default' }}</div>
             </NGi>
             <NGi>
-              <div style="color: #999; font-size: 12px">Top K Final</div>
+              <div style="color: #999; font-size: 12px">返回数量</div>
               <div>{{ selectedAgent.retrieval_config.top_k_final ?? 'default' }}</div>
             </NGi>
             <NGi>
-              <div style="color: #999; font-size: 12px">LIF Hops</div>
+              <div style="color: #999; font-size: 12px">LIF跳数</div>
               <div>{{ selectedAgent.retrieval_config.lif_hops ?? 'default' }}</div>
             </NGi>
           </NGrid>
@@ -255,43 +255,43 @@ const columns = [
     <!-- Create Modal -->
     <NModal
       v-model:show="showCreate"
-      title="Create Agent"
+      title="创建智能体"
       preset="card"
       style="width: 500px"
       :mask-closable="false"
     >
       <NForm :model="createForm" label-placement="top">
-        <NFormItem label="Agent ID" required>
-          <NInput v-model:value="createForm.agent_id" placeholder="e.g. my-agent" />
+        <NFormItem label="智能体ID" required>
+          <NInput v-model:value="createForm.agent_id" placeholder="例如 my-agent" />
         </NFormItem>
-        <NFormItem label="Name" required>
-          <NInput v-model:value="createForm.name" placeholder="Display name" />
+        <NFormItem label="名称" required>
+          <NInput v-model:value="createForm.name" placeholder="显示名称" />
         </NFormItem>
-        <NFormItem label="Role">
-          <NInput v-model:value="createForm.role" placeholder="e.g. Software Engineer" />
+        <NFormItem label="角色">
+          <NInput v-model:value="createForm.role" placeholder="例如 软件工程师" />
         </NFormItem>
-        <NFormItem label="Description">
+        <NFormItem label="描述">
           <NInput
             v-model:value="createForm.description"
             type="textarea"
-            placeholder="What this agent is for"
+            placeholder="该智能体的用途"
             :rows="2"
           />
         </NFormItem>
-        <NFormItem label="Expertise Tags">
+        <NFormItem label="专长标签">
           <NDynamicTags v-model:value="createForm.expertise" />
         </NFormItem>
       </NForm>
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="showCreate = false">Cancel</NButton>
+          <NButton @click="showCreate = false">取消</NButton>
           <NButton
             type="primary"
             :loading="creating"
             :disabled="!createForm.agent_id || !createForm.name"
             @click="handleCreate"
           >
-            Create
+            创建
           </NButton>
         </NSpace>
       </template>
@@ -300,29 +300,29 @@ const columns = [
     <!-- Edit Modal -->
     <NModal
       v-model:show="showEdit"
-      title="Edit Agent"
+      title="编辑智能体"
       preset="card"
       style="width: 500px"
       :mask-closable="false"
     >
       <NForm :model="editForm" label-placement="top">
-        <NFormItem label="Name">
+        <NFormItem label="名称">
           <NInput v-model:value="editForm.name" />
         </NFormItem>
-        <NFormItem label="Role">
+        <NFormItem label="角色">
           <NInput v-model:value="editForm.role" />
         </NFormItem>
-        <NFormItem label="Description">
+        <NFormItem label="描述">
           <NInput v-model:value="editForm.description" type="textarea" :rows="2" />
         </NFormItem>
-        <NFormItem label="Expertise Tags">
+        <NFormItem label="专长标签">
           <NDynamicTags v-model:value="editForm.expertise" />
         </NFormItem>
       </NForm>
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="showEdit = false">Cancel</NButton>
-          <NButton type="primary" :loading="saving" @click="handleSave">Save</NButton>
+          <NButton @click="showEdit = false">取消</NButton>
+          <NButton type="primary" :loading="saving" @click="handleSave">保存</NButton>
         </NSpace>
       </template>
     </NModal>

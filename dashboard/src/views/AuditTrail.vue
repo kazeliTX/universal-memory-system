@@ -11,7 +11,7 @@ const filterAgent = ref<string | null>(null)
 const filterType = ref<string | null>(null)
 
 const agentOptions = [
-  { label: 'All Agents', value: '' },
+  { label: '全部智能体', value: '' },
   { label: 'coder', value: 'coder' },
   { label: 'researcher', value: 'researcher' },
   { label: 'writer', value: 'writer' },
@@ -19,7 +19,7 @@ const agentOptions = [
 ]
 
 const typeOptions = [
-  { label: 'All Types', value: '' },
+  { label: '全部类型', value: '' },
   { label: 'vector_insert', value: 'vector_insert' },
   { label: 'cache_put', value: 'cache_put' },
   { label: 'cache_evict', value: 'cache_evict' },
@@ -40,11 +40,11 @@ function eventColor(type: string): 'success' | 'info' | 'warning' | 'error' | 'd
 
 const columns: DataTableColumns<AuditEvent> = [
   { title: 'ID', key: 'id', width: 60 },
-  { title: 'Time', key: 'timestamp', width: 180, render: (row) => new Date(row.timestamp).toLocaleString() },
-  { title: 'Type', key: 'event_type', width: 140 },
-  { title: 'Agent', key: 'agent_id', width: 100 },
-  { title: 'Memory ID', key: 'memory_id', width: 100, render: (row) => row.memory_id?.slice(0, 8) ?? '-' },
-  { title: 'Layer', key: 'layer', width: 60, render: (row) => row.layer ?? '-' },
+  { title: '时间戳', key: 'timestamp', width: 180, render: (row) => new Date(row.timestamp).toLocaleString() },
+  { title: '事件类型', key: 'event_type', width: 140 },
+  { title: '智能体', key: 'agent_id', width: 100 },
+  { title: '记忆ID', key: 'memory_id', width: 100, render: (row) => row.memory_id?.slice(0, 8) ?? '-' },
+  { title: '层级', key: 'layer', width: 60, render: (row) => row.layer ?? '-' },
 ]
 
 async function refresh() {
@@ -68,13 +68,13 @@ watch([filterAgent, filterType], refresh, { immediate: true })
 <template>
   <NSpace vertical :size="16">
     <NSpace align="center" :size="16">
-      <h2 style="margin: 0; color: #e6edf3">Audit Trail</h2>
+      <h2 style="margin: 0; color: #e6edf3">审计日志</h2>
       <NSelect
         v-model:value="filterAgent"
         :options="agentOptions"
         style="width: 150px"
         size="small"
-        placeholder="Filter agent"
+        placeholder="筛选智能体"
         clearable
       />
       <NSelect
@@ -82,11 +82,11 @@ watch([filterAgent, filterType], refresh, { immediate: true })
         :options="typeOptions"
         style="width: 180px"
         size="small"
-        placeholder="Filter type"
+        placeholder="筛选类型"
         clearable
       />
-      <NButton @click="refresh" size="small" ghost>Refresh</NButton>
-      <NTag type="info" size="small">{{ total }} total events</NTag>
+      <NButton @click="refresh" size="small" ghost>刷新</NButton>
+      <NTag type="info" size="small">共 {{ total }} 条事件</NTag>
     </NSpace>
 
     <NCard size="small">
@@ -100,7 +100,7 @@ watch([filterAgent, filterType], refresh, { immediate: true })
           striped
           size="small"
         />
-        <NEmpty v-else description="No audit events yet. Seed demo data to generate events." />
+        <NEmpty v-else description="暂无审计事件。请先填充演示数据以生成事件。" />
       </NSpin>
     </NCard>
   </NSpace>

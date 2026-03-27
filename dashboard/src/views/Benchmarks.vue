@@ -15,10 +15,10 @@ function formatTime(ns: number): string {
 }
 
 const columns: DataTableColumns<BenchmarkEntry> = [
-  { title: 'Benchmark', key: 'name' },
-  { title: 'Mean', key: 'mean_ns', width: 120, render: (row) => formatTime(row.mean_ns) },
-  { title: 'Median', key: 'median_ns', width: 120, render: (row) => formatTime(row.median_ns) },
-  { title: 'Std Dev', key: 'std_dev_ns', width: 120, render: (row) => formatTime(row.std_dev_ns) },
+  { title: '基准测试', key: 'name' },
+  { title: '平均值', key: 'mean_ns', width: 120, render: (row) => formatTime(row.mean_ns) },
+  { title: '中位数', key: 'median_ns', width: 120, render: (row) => formatTime(row.median_ns) },
+  { title: '标准差', key: 'std_dev_ns', width: 120, render: (row) => formatTime(row.std_dev_ns) },
 ]
 
 const maxMean = computed(() => {
@@ -42,9 +42,9 @@ onMounted(refresh)
 <template>
   <NSpace vertical :size="16">
     <NSpace align="center" :size="16">
-      <h2 style="margin: 0; color: #e6edf3">Performance Benchmarks</h2>
-      <NButton @click="refresh" :loading="loading" size="small" ghost>Refresh</NButton>
-      <NTag type="info" size="small">{{ benchmarks.length }} benchmarks</NTag>
+      <h2 style="margin: 0; color: #e6edf3">性能基准</h2>
+      <NButton @click="refresh" :loading="loading" size="small" ghost>刷新</NButton>
+      <NTag type="info" size="small">{{ benchmarks.length }} 项基准</NTag>
     </NSpace>
 
     <NCard size="small">
@@ -57,12 +57,12 @@ onMounted(refresh)
           striped
           size="small"
         />
-        <NEmpty v-else description="No benchmark data. Run: cargo bench -p umms-storage" />
+        <NEmpty v-else description="暂无基准数据。请运行: cargo bench -p umms-storage" />
       </NSpin>
     </NCard>
 
     <!-- Visual bars -->
-    <NCard title="Relative Performance" size="small" v-if="benchmarks.length > 0">
+    <NCard title="相对性能" size="small" v-if="benchmarks.length > 0">
       <div v-for="b in benchmarks" :key="b.name" style="margin-bottom: 8px">
         <div style="display: flex; align-items: center; gap: 12px">
           <span style="width: 260px; font-size: 12px; color: #8b949e; text-align: right">

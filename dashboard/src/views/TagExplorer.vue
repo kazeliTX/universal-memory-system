@@ -83,23 +83,23 @@ function handleGraphNodeClick(node: ForceGraphNode) {
 }
 
 const columns: DataTableColumns<TagResponse> = [
-  { title: 'Label', key: 'label', sorter: 'default' },
-  { title: 'Canonical', key: 'canonical', width: 200 },
+  { title: '标签名', key: 'label', sorter: 'default' },
+  { title: '标准形式', key: 'canonical', width: 200 },
   {
-    title: 'Frequency',
+    title: '频次',
     key: 'frequency',
     width: 100,
     sorter: (a, b) => a.frequency - b.frequency,
   },
   {
-    title: 'Importance',
+    title: '重要度',
     key: 'importance',
     width: 110,
     render: (row) => row.importance.toFixed(3),
     sorter: (a, b) => a.importance - b.importance,
   },
   {
-    title: 'Actions',
+    title: '操作',
     key: 'actions',
     width: 260,
     render: (row) =>
@@ -107,33 +107,33 @@ const columns: DataTableColumns<TagResponse> = [
         h(
           NButton,
           { size: 'small', type: 'info', onClick: () => showCooccurrences(row) },
-          () => 'Co-occurrences',
+          () => '共现标签',
         ),
         h(
           NButton,
           { size: 'small', type: 'success', onClick: () => loadGraphForTag(row) },
-          () => 'Graph',
+          () => '图谱',
         ),
       ]),
   },
 ]
 
 const searchColumns: DataTableColumns<TagMatchResponse> = [
-  { title: 'Label', key: 'tag.label', render: (row) => row.tag.label },
+  { title: '标签名', key: 'tag.label', render: (row) => row.tag.label },
   {
-    title: 'Similarity',
+    title: '相似度',
     key: 'similarity',
     width: 110,
     render: (row) => row.similarity.toFixed(4),
   },
   {
-    title: 'Frequency',
+    title: '频次',
     key: 'tag.frequency',
     width: 100,
     render: (row) => String(row.tag.frequency),
   },
   {
-    title: 'Importance',
+    title: '重要度',
     key: 'tag.importance',
     width: 110,
     render: (row) => row.tag.importance.toFixed(3),
@@ -141,15 +141,15 @@ const searchColumns: DataTableColumns<TagMatchResponse> = [
 ]
 
 const coocColumns: DataTableColumns<CoocEntry> = [
-  { title: 'Partner Tag', key: 'partner_tag.label', render: (row) => row.partner_tag.label },
+  { title: '关联标签', key: 'partner_tag.label', render: (row) => row.partner_tag.label },
   {
-    title: 'Count',
+    title: '共现次数',
     key: 'count',
     width: 80,
     render: (row) => String(row.count),
   },
   {
-    title: 'PMI',
+    title: 'PMI分数',
     key: 'pmi',
     width: 100,
     render: (row) => row.pmi.toFixed(3),
@@ -201,18 +201,18 @@ watch(selectedAgent, () => {
 <template>
   <NSpace vertical :size="16">
     <NSpace align="center" :size="16">
-      <h2 style="margin: 0; color: #e6edf3">Tag Explorer</h2>
+      <h2 style="margin: 0; color: #e6edf3">标签管理</h2>
       <NSelect
         v-model:value="selectedAgent"
         :options="agents.map(a => ({ label: a, value: a }))"
         style="width: 160px"
         size="small"
       />
-      <NTag type="info" size="small">{{ tags.length }} tags</NTag>
+      <NTag type="info" size="small">{{ tags.length }} 个标签</NTag>
     </NSpace>
 
     <!-- Tag Co-occurrence Graph -->
-    <NCard title="Tag Co-occurrence Graph" size="small">
+    <NCard title="标签共现图" size="small">
       <template #header-extra>
         <NTag v-if="graphTag" type="success" size="small" closable @close="graphTag = null; graphCoocData = null">
           {{ graphTag.label }}
@@ -221,8 +221,8 @@ watch(selectedAgent, () => {
       <NSpin :show="graphLoading">
         <div v-if="graphNodes.length > 0">
           <p style="margin: 0 0 8px; color: #8b949e; font-size: 12px">
-            Click a tag in the table below (Graph button) to visualize its co-occurrence network.
-            Click a neighbor node to re-center.
+            在下方表格中点击标签的「图谱」按钮以可视化其共现网络。
+            点击邻居节点可重新定位中心。
           </p>
           <ForceGraph
             :nodes="graphNodes"
@@ -233,16 +233,16 @@ watch(selectedAgent, () => {
             @node-click="handleGraphNodeClick"
           />
         </div>
-        <NEmpty v-else description="Select a tag from the table below and click 'Graph' to visualize co-occurrences." />
+        <NEmpty v-else description="从下方表格选择标签并点击「图谱」以可视化共现关系。" />
       </NSpin>
     </NCard>
 
     <!-- Semantic Search -->
-    <NCard title="Search Tags by Meaning" size="small">
+    <NCard title="按语义搜索标签" size="small">
       <NSpace :size="12">
         <NInput
           v-model:value="searchQuery"
-          placeholder="Search tags by semantic similarity..."
+          placeholder="按语义相似度搜索标签..."
           style="width: 500px"
           size="small"
           @keydown.enter="handleSearch"
@@ -254,7 +254,7 @@ watch(selectedAgent, () => {
           @click="handleSearch"
           :disabled="!searchQuery.trim()"
         >
-          Search
+          搜索
         </NButton>
       </NSpace>
 
@@ -271,7 +271,7 @@ watch(selectedAgent, () => {
     </NCard>
 
     <!-- All Tags Table -->
-    <NCard title="All Tags" size="small">
+    <NCard title="全部标签" size="small">
       <NSpin :show="loading">
         <NDataTable
           v-if="tags.length > 0"
@@ -283,7 +283,7 @@ watch(selectedAgent, () => {
           size="small"
           :pagination="{ pageSize: 25 }"
         />
-        <NEmpty v-else description="No tags found. Ingest documents to auto-extract tags." />
+        <NEmpty v-else description="未找到标签。请先摄入文档以自动提取标签。" />
       </NSpin>
     </NCard>
 
@@ -291,7 +291,7 @@ watch(selectedAgent, () => {
     <NModal
       v-model:show="showCooc"
       preset="card"
-      :title="`Co-occurrences: ${selectedTagLabel}`"
+      :title="`共现标签: ${selectedTagLabel}`"
       style="width: 600px"
     >
       <NSpin :show="coocLoading">
@@ -304,7 +304,7 @@ watch(selectedAgent, () => {
           striped
           size="small"
         />
-        <NEmpty v-else description="No co-occurring tags found." />
+        <NEmpty v-else description="未找到共现标签。" />
       </NSpin>
     </NModal>
   </NSpace>

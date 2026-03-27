@@ -32,47 +32,47 @@ function renderIcon(icon: any) {
 
 const menuOptions: MenuOption[] = [
   {
-    label: () => h(RouterLink, { to: '/' }, { default: () => 'Overview' }),
+    label: () => h(RouterLink, { to: '/' }, { default: () => '系统概览' }),
     key: 'overview',
     icon: renderIcon(ServerOutline),
   },
   {
-    label: () => h(RouterLink, { to: '/memory' }, { default: () => 'Memory Browser' }),
+    label: () => h(RouterLink, { to: '/memory' }, { default: () => '记忆浏览' }),
     key: 'memory',
     icon: renderIcon(LayersOutline),
   },
   {
-    label: () => h(RouterLink, { to: '/graph' }, { default: () => 'Knowledge Graph' }),
+    label: () => h(RouterLink, { to: '/graph' }, { default: () => '图谱探索' }),
     key: 'graph',
     icon: renderIcon(GitNetworkOutline),
   },
   {
-    label: () => h(RouterLink, { to: '/audit' }, { default: () => 'Audit Trail' }),
+    label: () => h(RouterLink, { to: '/audit' }, { default: () => '审计日志' }),
     key: 'audit',
     icon: renderIcon(ListOutline),
   },
   {
-    label: () => h(RouterLink, { to: '/ingest' }, { default: () => 'Document Ingest' }),
+    label: () => h(RouterLink, { to: '/ingest' }, { default: () => '文档摄入' }),
     key: 'ingest',
     icon: renderIcon(CloudUploadOutline),
   },
   {
-    label: () => h(RouterLink, { to: '/tags' }, { default: () => 'Tag Explorer' }),
+    label: () => h(RouterLink, { to: '/tags' }, { default: () => '标签管理' }),
     key: 'tags',
     icon: renderIcon(PricetagsOutline),
   },
   {
-    label: () => h(RouterLink, { to: '/benchmarks' }, { default: () => 'Benchmarks' }),
+    label: () => h(RouterLink, { to: '/benchmarks' }, { default: () => '性能基准' }),
     key: 'benchmarks',
     icon: renderIcon(SpeedometerOutline),
   },
   {
-    label: () => h(RouterLink, { to: '/consolidation' }, { default: () => 'Consolidation' }),
+    label: () => h(RouterLink, { to: '/consolidation' }, { default: () => '记忆巩固' }),
     key: 'consolidation',
     icon: renderIcon(SyncOutline),
   },
   {
-    label: () => h(RouterLink, { to: '/agents' }, { default: () => 'Agent Manager' }),
+    label: () => h(RouterLink, { to: '/agents' }, { default: () => '智能体管理' }),
     key: 'agents',
     icon: renderIcon(PeopleOutline),
   },

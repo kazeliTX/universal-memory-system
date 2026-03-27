@@ -53,28 +53,28 @@ const graphLinks = computed<ForceGraphLink[]>(() => {
 })
 
 const nodeColumns: DataTableColumns<KgNode> = [
-  { title: 'Label', key: 'label' },
-  { title: 'Type', key: 'node_type', width: 100 },
-  { title: 'Importance', key: 'importance', width: 100, render: (row) => row.importance.toFixed(2) },
-  { title: 'Scope', key: 'agent_id', width: 100, render: (row) => row.agent_id ?? 'shared' },
+  { title: '标签名', key: 'label' },
+  { title: '类型', key: 'node_type', width: 100 },
+  { title: '重要度', key: 'importance', width: 100, render: (row) => row.importance.toFixed(2) },
+  { title: '作用域', key: 'agent_id', width: 100, render: (row) => row.agent_id ?? 'shared' },
   {
-    title: 'Actions',
+    title: '操作',
     key: 'actions',
     width: 120,
     render: (row) =>
       h(
         NButton,
         { size: 'small', type: 'success', onClick: () => loadTraversal(row) },
-        () => 'Traverse',
+        () => '遍历',
       ),
   },
 ]
 
 const edgeColumns: DataTableColumns<KgEdge> = [
-  { title: 'Relation', key: 'relation' },
-  { title: 'Source', key: 'source_id', width: 100, render: (row) => row.source_id.slice(0, 8) },
-  { title: 'Target', key: 'target_id', width: 100, render: (row) => row.target_id.slice(0, 8) },
-  { title: 'Weight', key: 'weight', width: 80 },
+  { title: '关系', key: 'relation' },
+  { title: '源节点', key: 'source_id', width: 100, render: (row) => row.source_id.slice(0, 8) },
+  { title: '目标节点', key: 'target_id', width: 100, render: (row) => row.target_id.slice(0, 8) },
+  { title: '权重', key: 'weight', width: 80 },
 ]
 
 import { h } from 'vue'
@@ -124,24 +124,24 @@ function handleGraphNodeClick(node: ForceGraphNode) {
 <template>
   <NSpace vertical :size="16">
     <NSpace align="center" :size="16">
-      <h2 style="margin: 0; color: #e6edf3">Knowledge Graph</h2>
+      <h2 style="margin: 0; color: #e6edf3">图谱探索</h2>
       <NInput
         v-model:value="searchQuery"
-        placeholder="Search nodes by label..."
+        placeholder="按标签名搜索节点..."
         style="width: 300px"
         size="small"
         @keyup.enter="handleSearch"
       />
       <NButton @click="handleSearch" :loading="searching" type="primary" ghost size="small">
-        Search
+        搜索
       </NButton>
     </NSpace>
 
     <!-- Entity Relationship Graph -->
-    <NCard title="Entity Relationship Graph" size="small">
+    <NCard title="实体关系图" size="small">
       <template #header-extra>
         <NSpace :size="8" align="center">
-          <span style="color: #8b949e; font-size: 12px">Hops:</span>
+          <span style="color: #8b949e; font-size: 12px">跳数:</span>
           <NInputNumber
             v-model:value="traversalHops"
             :min="1"
@@ -157,14 +157,14 @@ function handleGraphNodeClick(node: ForceGraphNode) {
       <NSpin :show="traversalLoading">
         <div v-if="graphNodes.length > 0">
           <p style="margin: 0 0 8px; color: #8b949e; font-size: 12px">
-            {{ traversalNodes.length }} nodes, {{ graphLinks.length }} edges.
-            Click a node to re-center the traversal. Drag nodes to rearrange.
+            {{ traversalNodes.length }} 个节点, {{ graphLinks.length }} 条边。
+            点击节点可重新定位遍历中心，拖拽节点可调整布局。
           </p>
           <NSpace :size="8" style="margin-bottom: 8px">
-            <NTag :bordered="false" style="background: rgba(24,160,88,0.2); color: #18a058" size="small">Entity</NTag>
-            <NTag :bordered="false" style="background: rgba(88,166,255,0.2); color: #58a6ff" size="small">Concept</NTag>
-            <NTag :bordered="false" style="background: rgba(240,160,32,0.2); color: #f0a020" size="small">Relation</NTag>
-            <NTag :bordered="false" style="background: rgba(249,115,22,0.2); color: #f97316" size="small">Center</NTag>
+            <NTag :bordered="false" style="background: rgba(24,160,88,0.2); color: #18a058" size="small">实体</NTag>
+            <NTag :bordered="false" style="background: rgba(88,166,255,0.2); color: #58a6ff" size="small">概念</NTag>
+            <NTag :bordered="false" style="background: rgba(240,160,32,0.2); color: #f0a020" size="small">关系</NTag>
+            <NTag :bordered="false" style="background: rgba(249,115,22,0.2); color: #f97316" size="small">中心</NTag>
           </NSpace>
           <ForceGraph
             :nodes="graphNodes"
@@ -175,12 +175,12 @@ function handleGraphNodeClick(node: ForceGraphNode) {
             @node-click="handleGraphNodeClick"
           />
         </div>
-        <NEmpty v-else description="Search for a node above, then click 'Traverse' to visualize the graph neighborhood." />
+        <NEmpty v-else description="在上方搜索节点，然后点击「遍历」以可视化图谱邻域。" />
       </NSpin>
     </NCard>
 
     <!-- Search Results Table -->
-    <NCard title="Nodes" size="small">
+    <NCard title="节点" size="small">
       <NDataTable
         v-if="nodes.length > 0"
         :columns="nodeColumns"
@@ -191,11 +191,11 @@ function handleGraphNodeClick(node: ForceGraphNode) {
         size="small"
         :row-props="(row: KgNode) => ({ style: 'cursor: pointer', onClick: () => handleNodeClick(row) })"
       />
-      <NEmpty v-else description="Search for nodes or seed demo data first." />
+      <NEmpty v-else description="请先搜索节点或填充演示数据。" />
     </NCard>
 
     <!-- Node Detail Panel -->
-    <NCard v-if="selectedNode" :title="`Node: ${selectedNode.label}`" size="small">
+    <NCard v-if="selectedNode" :title="`节点: ${selectedNode.label}`" size="small">
       <NSpace vertical :size="8">
         <NSpace>
           <NTag type="info">{{ selectedNode.node_type }}</NTag>
@@ -203,7 +203,7 @@ function handleGraphNodeClick(node: ForceGraphNode) {
           <NTag>{{ selectedNode.agent_id ?? 'shared' }}</NTag>
         </NSpace>
         <div v-if="selectedEdges.length > 0">
-          <h4 style="color: #e6edf3">Edges ({{ selectedEdges.length }})</h4>
+          <h4 style="color: #e6edf3">边 ({{ selectedEdges.length }})</h4>
           <NDataTable
             :columns="edgeColumns"
             :data="selectedEdges"

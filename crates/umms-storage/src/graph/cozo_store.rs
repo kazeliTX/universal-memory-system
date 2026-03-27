@@ -198,7 +198,7 @@ impl CozoGraphStore {
         );
         if let Err(e) = &res {
             let msg = e.to_string();
-            if !msg.contains("already exists") {
+            if !msg.contains("already exists") && !msg.contains("conflicts with an existing one") {
                 return Err(cozo_err(e));
             }
         }
@@ -221,7 +221,7 @@ impl CozoGraphStore {
         );
         if let Err(e) = &res {
             let msg = e.to_string();
-            if !msg.contains("already exists") {
+            if !msg.contains("already exists") && !msg.contains("conflicts with an existing one") {
                 return Err(cozo_err(e));
             }
         }
