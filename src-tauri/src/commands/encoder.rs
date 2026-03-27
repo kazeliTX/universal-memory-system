@@ -13,18 +13,24 @@ use umms_core::traits::{Encoder, VectorStore};
 pub async fn encoder_status(
     state: State<'_, Arc<AppState>>,
 ) -> Result<EncoderStatusResponse, String> {
-    match &state.encoder {
-        Some(enc) => {
-            let stats = enc.stats.snapshot();
+    match &state.model_pool {
+        Some(pool) => {
+            let (total_requests, total_texts_encoded, total_errors, total_retries, avg_latency_ms) =
+                if let Some(stats) = pool.embedding_stats() {
+                    let s = stats.snapshot();
+                    (s.total_requests, s.total_texts_encoded, s.total_errors, s.total_retries, s.avg_latency_ms)
+                } else {
+                    (0, 0, 0, 0, 0.0)
+                };
             Ok(EncoderStatusResponse {
                 available: true,
-                model: Some(enc.model_name().to_owned()),
-                dimension: Some(enc.dimension()),
-                total_requests: stats.total_requests,
-                total_texts_encoded: stats.total_texts_encoded,
-                total_errors: stats.total_errors,
-                total_retries: stats.total_retries,
-                avg_latency_ms: stats.avg_latency_ms,
+                model: Some(pool.model_name().to_owned()),
+                dimension: Some(pool.dimension()),
+                total_requests,
+                total_texts_encoded,
+                total_errors,
+                total_retries,
+                avg_latency_ms,
             })
         }
         None => Ok(EncoderStatusResponse {

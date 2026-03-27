@@ -75,8 +75,8 @@ pub struct AppState {
     pub graph: Arc<dyn KnowledgeGraphStore>,
     pub files: LocalFileStore,
     pub audit: AuditLog,
-    /// Encoder is `None` when `GEMINI_API_KEY` is not set (dev mode without API).
-    pub encoder: Option<Arc<GeminiEncoder>>,
+    /// Unified encoder via ModelPool. `None` when no model providers initialized.
+    pub encoder: Option<Arc<dyn Encoder>>,
     /// Model pool for multi-model management (M5).
     /// `None` when no model providers could be initialized.
     pub model_pool: Option<Arc<ModelPool>>,
@@ -137,21 +137,7 @@ impl AppState {
 
         // Encoder: attempt to initialise from env var. Not a fatal error if missing —
         // dev mode can run without an API key, using pre-seeded fake vectors.
-        let encoder: Option<Arc<GeminiEncoder>> = match GeminiEncoder::new(GeminiConfig {
-            dimension: config.vector_dim,
-            ..GeminiConfig::default()
-        }) {
-            Ok(enc) => {
-                tracing::info!(model = enc.model_name(), dim = enc.dimension(), "encoder ready");
-                Some(Arc::new(enc))
-            }
-            Err(e) => {
-                tracing::warn!("Encoder not available: {e}. Encoding API will be disabled.");
-                None
-            }
-        };
-
-        // Model pool (M5): initialize from config, graceful degradation
+        // Model pool (M5): unified model management — replaces legacy GeminiEncoder
         let model_pool = {
             let pool_config = &umms_config.model_pool;
             match ModelPool::from_config(pool_config) {
@@ -229,8 +215,8 @@ impl AppState {
         }
 
         // Retrieval pipeline (requires encoder for query encoding)
-        let retriever = encoder.as_ref().map(|enc| {
-            let enc_arc: Arc<dyn Encoder> = Arc::clone(enc) as Arc<dyn Encoder>;
+        let retriever = model_pool.as_ref().map(|pool| {
+            let enc_arc: Arc<dyn Encoder> = Arc::clone(pool) as Arc<dyn Encoder>;
             let vec_arc: Arc<dyn umms_core::traits::VectorStore> = Arc::clone(&vector) as _;
             let graph_arc: Arc<dyn umms_core::traits::KnowledgeGraphStore> =
                 Arc::clone(&graph) as _;
@@ -253,6 +239,11 @@ impl AppState {
         });
 
         let metrics_registry = umms_observe::init_metrics();
+
+        // Derive encoder from model_pool (ModelPool implements Encoder trait)
+        let encoder: Option<Arc<dyn Encoder>> = model_pool
+            .as_ref()
+            .map(|pool| Arc::clone(pool) as Arc<dyn Encoder>);
 
         Ok(Self {
             cache,

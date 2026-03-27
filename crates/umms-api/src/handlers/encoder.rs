@@ -49,19 +49,32 @@ pub async fn encode_text(
 pub async fn encoder_status(
     State(state): State<Arc<AppState>>,
 ) -> Json<EncoderStatusResponse> {
-    match &state.encoder {
-        Some(enc) => {
-            let stats = enc.stats.snapshot();
-            Json(EncoderStatusResponse {
-                available: true,
-                model: Some(enc.model_name().to_owned()),
-                dimension: Some(enc.dimension()),
-                total_requests: stats.total_requests,
-                total_texts_encoded: stats.total_texts_encoded,
-                total_errors: stats.total_errors,
-                total_retries: stats.total_retries,
-                avg_latency_ms: stats.avg_latency_ms,
-            })
+    match &state.model_pool {
+        Some(pool) => {
+            if let Some(stats) = pool.embedding_stats() {
+                let snap = stats.snapshot();
+                Json(EncoderStatusResponse {
+                    available: true,
+                    model: Some(pool.model_name().to_owned()),
+                    dimension: Some(pool.dimension()),
+                    total_requests: snap.total_requests,
+                    total_texts_encoded: snap.total_texts_encoded,
+                    total_errors: snap.total_errors,
+                    total_retries: snap.total_retries,
+                    avg_latency_ms: snap.avg_latency_ms,
+                })
+            } else {
+                Json(EncoderStatusResponse {
+                    available: true,
+                    model: Some(pool.model_name().to_owned()),
+                    dimension: Some(pool.dimension()),
+                    total_requests: 0,
+                    total_texts_encoded: 0,
+                    total_errors: 0,
+                    total_retries: 0,
+                    avg_latency_ms: 0.0,
+                })
+            }
         }
         None => Json(EncoderStatusResponse {
             available: false,
