@@ -20,10 +20,12 @@ use umms_core::traits::{
 use umms_core::error::UmmsError;
 use umms_core::types::{AgentId, MemoryId, ScoredMemory, ScoreSource};
 
-use crate::epa::EpaAnalyzer;
+use umms_analyzer::epa::EpaAnalyzer;
+use umms_analyzer::lgsrr::{LgsrrDecomposer, LgsrrDecomposition};
+use umms_analyzer::reshaping::QueryReshaper;
+
 use crate::recall::bm25::Bm25Index;
 use crate::recall::hybrid::{HitSourceInfo, HybridHit, HybridRecall};
-use crate::reshaping::QueryReshaper;
 
 /// Extended result with per-hit source tracking for dashboard visualization.
 #[derive(Debug)]
@@ -40,6 +42,8 @@ pub struct PipelineResult {
     pub diffusion_count: usize,
     /// EPA analysis result (None if EPA is disabled or no tags available).
     pub epa_result: Option<EpaResult>,
+    /// LGSRR five-layer decomposition of the query.
+    pub lgsrr: Option<LgsrrDecomposition>,
 }
 
 /// The full retrieval pipeline.
@@ -144,6 +148,9 @@ impl RetrievalPipeline {
         let query_vector = self.encoder.encode_text(query).await?;
         latency.encode_ms = encode_start.elapsed().as_millis() as u64;
 
+        // Stage 0.3: LGSRR decomposition (always runs, heuristic, sub-ms)
+        let lgsrr = LgsrrDecomposer::decompose(query);
+
         // Stage 0.5: EPA analyze (if enabled)
         let epa_result = if let Some(ref epa) = self.epa {
             let epa_start = std::time::Instant::now();
@@ -244,6 +251,7 @@ impl RetrievalPipeline {
             rerank_count,
             diffusion_count,
             epa_result,
+            lgsrr: Some(lgsrr),
         })
     }
 

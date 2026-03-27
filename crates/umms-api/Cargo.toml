@@ -14,6 +14,7 @@ umms-storage.workspace = true
 umms-model.workspace = true
 umms-encoder.workspace = true
 umms-retriever.workspace = true
+umms-analyzer.workspace = true
 umms-observe.workspace = true
 umms-consolidation.workspace = true
 umms-persona.workspace = true

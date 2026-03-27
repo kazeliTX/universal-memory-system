@@ -387,6 +387,72 @@ pub struct ActivatedTagResponse {
 }
 
 // ---------------------------------------------------------------------------
+// LGSRR (semantic decomposition)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct LgsrrResponse {
+    pub query: String,
+    pub lexical: LgsrrLexicalResponse,
+    pub grammatical: LgsrrGrammaticalResponse,
+    pub semantic: LgsrrSemanticResponse,
+    pub relational: LgsrrRelationalResponse,
+    pub reasoning: LgsrrReasoningResponse,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LgsrrLexicalResponse {
+    pub key_terms: Vec<String>,
+    pub entities: Vec<String>,
+    pub language: String,
+    pub token_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LgsrrGrammaticalResponse {
+    pub query_type: String,
+    pub is_comparison: bool,
+    pub is_negated: bool,
+    pub temporal_reference: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LgsrrSemanticResponse {
+    pub domains: Vec<String>,
+    pub specificity: f32,
+    pub complexity: f32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LgsrrRelationalResponse {
+    pub relations: Vec<LgsrrRelationResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LgsrrRelationResponse {
+    pub subject: String,
+    pub predicate: String,
+    pub object: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LgsrrReasoningResponse {
+    pub intent: String,
+    pub expected_answer: String,
+    pub confidence: f32,
+    pub retrieval_hints: LgsrrRetrievalHintsResponse,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LgsrrRetrievalHintsResponse {
+    pub min_score_adjustment: f32,
+    pub top_k_multiplier: f32,
+    pub bm25_weight_adjustment: f32,
+    pub enable_diffusion: bool,
+    pub diffusion_hops: usize,
+}
+
+// ---------------------------------------------------------------------------
 // Consolidation (M4)
 // ---------------------------------------------------------------------------
 

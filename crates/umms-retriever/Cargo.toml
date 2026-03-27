@@ -13,6 +13,7 @@ umms-core.workspace = true
 umms-storage.workspace = true
 umms-model.workspace = true
 umms-encoder.workspace = true
+umms-analyzer.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true

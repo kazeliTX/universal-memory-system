@@ -5,6 +5,7 @@
 //! No business logic lives here — that belongs in the storage/service crates.
 
 pub mod agent;
+pub mod analyze;
 pub mod audit;
 pub mod benchmarks;
 pub mod chat;

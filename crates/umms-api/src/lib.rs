@@ -232,6 +232,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         // EPA
         .route("/api/epa/analyze", post(handlers::epa::epa_analyze))
+        // LGSRR Analysis
+        .route("/api/analyze", post(handlers::analyze::analyze_query))
         // Models (M5)
         .route("/api/models", get(handlers::models::list_models))
         // Model Traces
