@@ -1,6 +1,6 @@
 # ADR-003: 用 CozoDB 替代 SQLite+petgraph 作为知识图谱存储
 
-**状态**: 已决策（待实施）
+**状态**: 已实施（Phase A 完成，Phase B-D 进行中）
 **日期**: 2026-03-25
 **决策者**: kazeli
 
