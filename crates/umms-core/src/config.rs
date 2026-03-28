@@ -231,6 +231,9 @@ pub struct StorageConfig {
     pub files_dir: String,
     /// Graph backend: "cozo" (default) or "sqlite".
     pub graph_backend: String,
+    /// BM25 tantivy index directory (relative to data_dir).
+    /// Empty string means in-memory only (no persistence).
+    pub bm25_dir: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -559,6 +562,7 @@ impl Default for StorageConfig {
             context_db: "context.sqlite".to_owned(),
             files_dir: "files".to_owned(),
             graph_backend: "cozo".to_owned(),
+            bm25_dir: "bm25_index".to_owned(),
         }
     }
 }

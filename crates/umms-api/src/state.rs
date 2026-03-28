@@ -171,9 +171,17 @@ impl AppState {
         };
 
         // BM25 index (always initialised, even without encoder)
+        // Use persistent directory from config when available.
+        let bm25_path = if umms_cfg.storage.bm25_dir.is_empty() {
+            None
+        } else {
+            Some(config.data_dir.join(&umms_cfg.storage.bm25_dir))
+        };
         let bm25 = Arc::new(
-            Bm25Index::new().map_err(|e| UmmsError::Internal(format!("BM25 init failed: {e}")))?,
+            Bm25Index::open(bm25_path.as_ref())
+                .map_err(|e| UmmsError::Internal(format!("BM25 init failed: {e}")))?,
         );
+        tracing::info!(persistent = bm25_path.is_some(), "BM25 index initialised");
 
         // Tag store (initialise when tag system is enabled)
         let tag_store: Option<Arc<dyn TagStore>> = if umms_config.tag.enabled {

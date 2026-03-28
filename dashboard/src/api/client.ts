@@ -426,261 +426,149 @@ export async function clearTraces(): Promise<{ cleared: boolean }> {
 }
 
 // ---------------------------------------------------------------------------
-// Prompt Editor (mock implementations — backend pending)
+// Prompt Editor
 // ---------------------------------------------------------------------------
 
-const MOCK_VARIABLES: PromptVariable[] = [
-  { name: 'AgentName', description: '当前智能体名称', resolver: 'agent.name' },
-  { name: 'AgentRole', description: '智能体角色', resolver: 'agent.role' },
-  { name: 'DateTime', description: '当前日期时间', resolver: 'system.datetime' },
-  { name: 'Date', description: '当前日期', resolver: 'system.date' },
-  { name: 'UserLanguage', description: '用户语言偏好', resolver: 'user.language' },
-  { name: 'MemoryContext', description: '记忆上下文摘要', resolver: 'memory.context' },
-  { name: 'RecentHistory', description: '最近对话历史', resolver: 'memory.recent_history' },
-]
-
-function defaultBlocks(agentId: string): PromptBlock[] {
-  return [
-    {
-      id: 'blk-identity',
-      name: '身份设定',
-      block_type: 'System',
-      content: `你是 {{AgentName}}，一个专业的{{AgentRole}}。请始终以专业、准确的方式回答问题。`,
-      variants: [
-        `你是 {{AgentName}}，一个专业的{{AgentRole}}。请始终以专业、准确的方式回答问题。`,
-        `作为 {{AgentName}}（{{AgentRole}}），你的目标是为用户提供最优质的帮助和建议。`,
-      ],
-      selected_variant: 0,
-      enabled: true,
-      order: 0,
-    },
-    {
-      id: 'blk-memory',
-      name: '记忆规则',
-      block_type: 'Memory',
-      content: `【记忆系统】以下是从长期记忆中检索的相关信息：\n{{MemoryContext}}\n\n请参考这些记忆来回答用户的问题，但不要直接引用记忆来源。`,
-      variants: [
-        `【记忆系统】以下是从长期记忆中检索的相关信息：\n{{MemoryContext}}\n\n请参考这些记忆来回答用户的问题，但不要直接引用记忆来源。`,
-      ],
-      selected_variant: 0,
-      enabled: true,
-      order: 1,
-    },
-    {
-      id: 'blk-diary',
-      name: '日记系统',
-      block_type: 'Diary',
-      content: `【日记】当前时间: {{DateTime}}\n你可以在回答中融入时间相关的上下文信息。`,
-      variants: [
-        `【日记】当前时间: {{DateTime}}\n你可以在回答中融入时间相关的上下文信息。`,
-      ],
-      selected_variant: 0,
-      enabled: false,
-      order: 2,
-    },
-    {
-      id: 'blk-rules',
-      name: '行为规范',
-      block_type: 'Rules',
-      content: `【规范】\n1. 使用 {{UserLanguage}} 语言回答\n2. 代码块使用 Markdown 格式\n3. 不确定时明确告知用户\n4. 保持回答简洁精确`,
-      variants: [
-        `【规范】\n1. 使用 {{UserLanguage}} 语言回答\n2. 代码块使用 Markdown 格式\n3. 不确定时明确告知用户\n4. 保持回答简洁精确`,
-        `【规范】\n1. 回答须详尽完整\n2. 提供代码示例时附带注释\n3. 主动提出改进建议\n4. 使用结构化格式输出`,
-      ],
-      selected_variant: 0,
-      enabled: true,
-      order: 3,
-    },
-  ]
+async function httpPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
 }
 
-const _promptConfigCache = new Map<string, AgentPromptConfig>()
-
-function getMockConfig(agentId: string): AgentPromptConfig {
-  if (!_promptConfigCache.has(agentId)) {
-    _promptConfigCache.set(agentId, {
-      agent_id: agentId,
-      mode: 'modular',
-      original_prompt: `你是 {{AgentName}}，一个专业的{{AgentRole}}。\n\n当前时间: {{DateTime}}\n\n请以专业、准确的方式回答问题。`,
-      blocks: defaultBlocks(agentId),
-      updated_at: new Date().toISOString(),
-    })
-  }
-  return _promptConfigCache.get(agentId)!
+async function httpPut<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
 }
 
-const MOCK_WAREHOUSES: PromptWarehouse[] = [
-  {
-    name: '全局仓库',
-    is_global: true,
-    blocks: [
-      {
-        id: 'wh-cot',
-        name: '思维链',
-        block_type: 'Reasoning',
-        content: '请逐步分析问题，展示你的推理过程。在最终回答前，先列出关键思考步骤。',
-        variants: ['请逐步分析问题，展示你的推理过程。在最终回答前，先列出关键思考步骤。'],
-        selected_variant: 0,
-        enabled: true,
-        order: 0,
-      },
-      {
-        id: 'wh-safety',
-        name: '安全规范',
-        block_type: 'Safety',
-        content: '请勿生成有害、违法或不当的内容。始终遵循道德准则。',
-        variants: ['请勿生成有害、违法或不当的内容。始终遵循道德准则。'],
-        selected_variant: 0,
-        enabled: true,
-        order: 1,
-      },
-      {
-        id: 'wh-format',
-        name: '输出格式',
-        block_type: 'Format',
-        content: '输出时请使用 Markdown 格式，包括标题、列表和代码块。',
-        variants: ['输出时请使用 Markdown 格式，包括标题、列表和代码块。'],
-        selected_variant: 0,
-        enabled: true,
-        order: 2,
-      },
-    ],
-  },
-  {
-    name: '私有仓库',
-    is_global: false,
-    blocks: [
-      {
-        id: 'wh-code-review',
-        name: '代码审查',
-        block_type: 'Task',
-        content: '请对以下代码进行审查，重点关注：性能、安全性、可读性、最佳实践。',
-        variants: ['请对以下代码进行审查，重点关注：性能、安全性、可读性、最佳实践。'],
-        selected_variant: 0,
-        enabled: true,
-        order: 0,
-      },
-    ],
-  },
-]
+async function httpDelete<T>(path: string): Promise<T> {
+  const res = await fetch(path, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}
 
 export async function getPromptConfig(agentId: string): Promise<AgentPromptConfig> {
-  // TODO: replace with real API call
-  // if (IS_TAURI) return tauriInvoke('get_prompt_config', { agentId })
-  // return httpGet(`/api/prompts/${agentId}`)
-  await new Promise(r => setTimeout(r, 150))
-  return JSON.parse(JSON.stringify(getMockConfig(agentId)))
+  if (IS_TAURI) return tauriInvoke('get_prompt_config', { agentId })
+  return httpGet(`/api/prompts/${agentId}`)
 }
 
 export async function savePromptConfig(agentId: string, config: AgentPromptConfig): Promise<void> {
-  // TODO: replace with real API call
-  await new Promise(r => setTimeout(r, 100))
-  _promptConfigCache.set(agentId, { ...config, updated_at: new Date().toISOString() })
+  if (IS_TAURI) {
+    await tauriInvoke('save_prompt_config', { agentId, config })
+    return
+  }
+  await httpPut(`/api/prompts/${agentId}`, {
+    mode: config.mode,
+    original_prompt: config.original_prompt,
+    blocks: config.blocks,
+    preset_path: config.preset_path,
+    preset_content: config.preset_content,
+  })
 }
 
 export async function switchPromptMode(agentId: string, mode: PromptMode): Promise<void> {
-  await new Promise(r => setTimeout(r, 50))
-  const cfg = getMockConfig(agentId)
-  cfg.mode = mode
-  cfg.updated_at = new Date().toISOString()
+  if (IS_TAURI) {
+    await tauriInvoke('switch_prompt_mode', { agentId, mode })
+    return
+  }
+  await httpPut(`/api/prompts/${agentId}/mode`, { mode })
 }
 
 export async function addBlock(agentId: string, block: PromptBlock): Promise<void> {
-  await new Promise(r => setTimeout(r, 50))
-  const cfg = getMockConfig(agentId)
-  cfg.blocks.push(block)
-  cfg.updated_at = new Date().toISOString()
+  if (IS_TAURI) {
+    await tauriInvoke('add_prompt_block', { agentId, block })
+    return
+  }
+  await httpPost(`/api/prompts/${agentId}/blocks`, block)
 }
 
 export async function updateBlock(agentId: string, blockId: string, block: Partial<PromptBlock>): Promise<void> {
-  await new Promise(r => setTimeout(r, 50))
-  const cfg = getMockConfig(agentId)
-  const target = cfg.blocks.find(b => b.id === blockId)
-  if (target) Object.assign(target, block)
-  cfg.updated_at = new Date().toISOString()
+  if (IS_TAURI) {
+    await tauriInvoke('update_prompt_block', { agentId, blockId, block })
+    return
+  }
+  await httpPut(`/api/prompts/${agentId}/blocks/${blockId}`, block)
 }
 
 export async function deleteBlock(agentId: string, blockId: string): Promise<void> {
-  await new Promise(r => setTimeout(r, 50))
-  const cfg = getMockConfig(agentId)
-  cfg.blocks = cfg.blocks.filter(b => b.id !== blockId)
-  cfg.updated_at = new Date().toISOString()
+  if (IS_TAURI) {
+    await tauriInvoke('delete_prompt_block', { agentId, blockId })
+    return
+  }
+  await httpDelete(`/api/prompts/${agentId}/blocks/${blockId}`)
 }
 
 export async function reorderBlocks(agentId: string, blockIds: string[]): Promise<void> {
-  await new Promise(r => setTimeout(r, 50))
-  const cfg = getMockConfig(agentId)
-  const blockMap = new Map(cfg.blocks.map(b => [b.id, b]))
-  cfg.blocks = blockIds.map((id, i) => {
-    const b = blockMap.get(id)!
-    b.order = i
-    return b
-  })
-  cfg.updated_at = new Date().toISOString()
+  if (IS_TAURI) {
+    await tauriInvoke('reorder_prompt_blocks', { agentId, blockIds })
+    return
+  }
+  await httpPut(`/api/prompts/${agentId}/blocks/reorder`, { block_ids: blockIds })
 }
 
 export async function addVariant(agentId: string, blockId: string, content: string): Promise<void> {
-  await new Promise(r => setTimeout(r, 50))
-  const cfg = getMockConfig(agentId)
-  const block = cfg.blocks.find(b => b.id === blockId)
-  if (block) block.variants.push(content)
-  cfg.updated_at = new Date().toISOString()
+  if (IS_TAURI) {
+    await tauriInvoke('add_prompt_variant', { agentId, blockId, content })
+    return
+  }
+  await httpPost(`/api/prompts/${agentId}/blocks/${blockId}/variants`, { content })
 }
 
 export async function selectVariant(agentId: string, blockId: string, index: number): Promise<void> {
-  await new Promise(r => setTimeout(r, 50))
-  const cfg = getMockConfig(agentId)
-  const block = cfg.blocks.find(b => b.id === blockId)
-  if (block) {
-    block.selected_variant = index
-    block.content = block.variants[index] ?? block.content
+  if (IS_TAURI) {
+    await tauriInvoke('select_prompt_variant', { agentId, blockId, index })
+    return
   }
-  cfg.updated_at = new Date().toISOString()
+  await httpPut(`/api/prompts/${agentId}/blocks/${blockId}/variant/${index}`, {})
 }
 
 export async function listWarehouses(): Promise<PromptWarehouse[]> {
-  await new Promise(r => setTimeout(r, 100))
-  return JSON.parse(JSON.stringify(MOCK_WAREHOUSES))
+  if (IS_TAURI) return tauriInvoke('list_prompt_warehouses')
+  const resp: { warehouses: PromptWarehouse[] } = await httpGet('/api/prompts/warehouses')
+  return resp.warehouses
 }
 
 export async function getWarehouse(name: string): Promise<PromptWarehouse> {
-  await new Promise(r => setTimeout(r, 80))
-  const wh = MOCK_WAREHOUSES.find(w => w.name === name)
-  if (!wh) throw new Error(`Warehouse "${name}" not found`)
-  return JSON.parse(JSON.stringify(wh))
+  if (IS_TAURI) return tauriInvoke('get_prompt_warehouse', { name })
+  return httpGet(`/api/prompts/warehouses/${encodeURIComponent(name)}`)
 }
 
 export async function saveWarehouse(warehouse: PromptWarehouse): Promise<void> {
-  await new Promise(r => setTimeout(r, 80))
-  const idx = MOCK_WAREHOUSES.findIndex(w => w.name === warehouse.name)
-  if (idx >= 0) MOCK_WAREHOUSES[idx] = warehouse
-  else MOCK_WAREHOUSES.push(warehouse)
+  if (IS_TAURI) {
+    await tauriInvoke('save_prompt_warehouse', { warehouse })
+    return
+  }
+  await httpPut(`/api/prompts/warehouses/${encodeURIComponent(warehouse.name)}`, {
+    name: warehouse.name,
+    blocks: warehouse.blocks,
+    is_global: warehouse.is_global,
+  })
 }
 
 export async function deleteWarehouse(name: string): Promise<void> {
-  await new Promise(r => setTimeout(r, 80))
-  const idx = MOCK_WAREHOUSES.findIndex(w => w.name === name)
-  if (idx >= 0) MOCK_WAREHOUSES.splice(idx, 1)
+  if (IS_TAURI) {
+    await tauriInvoke('delete_prompt_warehouse', { name })
+    return
+  }
+  await httpDelete(`/api/prompts/warehouses/${encodeURIComponent(name)}`)
 }
 
 export async function listVariables(): Promise<PromptVariable[]> {
-  await new Promise(r => setTimeout(r, 50))
-  return [...MOCK_VARIABLES]
+  if (IS_TAURI) return tauriInvoke('list_prompt_variables')
+  const resp: { variables: PromptVariable[] } = await httpGet('/api/prompts/variables')
+  return resp.variables
 }
 
 export async function previewPrompt(agentId: string): Promise<string> {
-  await new Promise(r => setTimeout(r, 100))
-  const cfg = getMockConfig(agentId)
-  if (cfg.mode === 'original') {
-    return cfg.original_prompt
-  }
-  if (cfg.mode === 'preset') {
-    return cfg.preset_content ?? '(未选择预设)'
-  }
-  // modular: join enabled blocks
-  return cfg.blocks
-    .filter(b => b.enabled)
-    .sort((a, b) => a.order - b.order)
-    .map(b => `[${b.name}]\n${b.content}`)
-    .join('\n\n')
+  if (IS_TAURI) return tauriInvoke('preview_prompt', { agentId })
+  const resp: { resolved_prompt: string } = await httpPost('/api/prompts/preview', { agent_id: agentId })
+  return resp.resolved_prompt
 }

@@ -3,11 +3,13 @@
 //! Maintains an in-process full-text index that mirrors the vector store.
 //! When a memory is inserted into the vector store, it should also be
 //! indexed here via `index_entry`. The index lives in-memory by default
-//! but can be persisted to disk.
+//! but can be persisted to disk when a directory path is provided.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use tantivy::collector::TopDocs;
+use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy};
@@ -32,6 +34,18 @@ pub struct Bm25Index {
 impl Bm25Index {
     /// Create a new in-memory BM25 index.
     pub fn new() -> Result<Self> {
+        Self::open(None::<&str>)
+    }
+
+    /// Open a BM25 index, optionally backed by a directory on disk.
+    ///
+    /// When `dir` is `Some(path)` and the path is non-empty, the index is
+    /// persisted to disk using tantivy's `MmapDirectory`. The directory is
+    /// created if it does not exist. On restart the existing index is reopened.
+    ///
+    /// When `dir` is `None` or the path string is empty, a RAM-only index
+    /// is created (the previous default behaviour).
+    pub fn open<P: AsRef<Path>>(dir: Option<P>) -> Result<Self> {
         let mut schema_builder = Schema::builder();
         let f_id = schema_builder.add_text_field("id", STRING | STORED);
         let f_agent_id = schema_builder.add_text_field("agent_id", STRING | STORED);
@@ -39,7 +53,22 @@ impl Bm25Index {
         let f_scope = schema_builder.add_text_field("scope", STRING | STORED);
         let schema = schema_builder.build();
 
-        let index = Index::create_in_ram(schema);
+        let index = match dir {
+            Some(ref p) if !p.as_ref().as_os_str().is_empty() => {
+                let path = p.as_ref();
+                std::fs::create_dir_all(path).map_err(|e| {
+                    UmmsError::Internal(format!("BM25 dir create failed: {e}"))
+                })?;
+                let mmap_dir = MmapDirectory::open(path).map_err(|e| {
+                    UmmsError::Internal(format!("BM25 MmapDirectory open failed: {e}"))
+                })?;
+                Index::open_or_create(mmap_dir, schema).map_err(|e| {
+                    UmmsError::Internal(format!("BM25 open_or_create failed: {e}"))
+                })?
+            }
+            _ => Index::create_in_ram(schema),
+        };
+
         let writer = index
             .writer(15_000_000) // 15 MB heap
             .map_err(|e| UmmsError::Internal(format!("BM25 writer init failed: {e}")))?;

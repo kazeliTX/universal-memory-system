@@ -36,6 +36,35 @@ const GREETING_PATTERNS: &[&str] = &[
 ];
 
 impl IntentClassifier {
+    /// Returns `true` for greetings, acknowledgments, and very short messages
+    /// that do not warrant a retrieval pipeline call.
+    pub fn is_non_retrieval_intent(query: &str) -> bool {
+        let trimmed = query.trim();
+        // Very short messages (< 3 chars) are never retrieval-worthy
+        if trimmed.chars().count() < 3 {
+            return true;
+        }
+        let result = Self::classify(trimmed);
+        !result.needs_retrieval
+    }
+
+    /// Returns `true` when the query is a simple greeting or farewell.
+    pub fn is_greeting(query: &str) -> bool {
+        let trimmed = query.trim();
+        let lower = trimmed.to_lowercase();
+        trimmed.chars().count() <= 10 && is_greeting(&lower)
+    }
+
+    /// Returns `true` when the query is a simple acknowledgment (ok, thanks, etc.).
+    pub fn is_acknowledgment(query: &str) -> bool {
+        let lower = query.trim().to_lowercase();
+        matches!(
+            lower.as_str(),
+            "ok" | "okay" | "got it" | "sure" | "yes" | "no"
+                | "thanks" | "thank you" | "好的" | "可以" | "嗯" | "哦" | "行" | "谢谢"
+        )
+    }
+
     /// Classify a query's intent quickly.
     pub fn classify(query: &str) -> QueryIntent {
         let trimmed = query.trim();
