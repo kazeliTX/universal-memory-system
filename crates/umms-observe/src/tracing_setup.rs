@@ -16,8 +16,7 @@ static INIT: Once = Once::new();
 /// Safe to call multiple times; only the first invocation has any effect.
 pub fn init_tracing(level: &str, json_format: bool) {
     INIT.call_once(|| {
-        let filter = EnvFilter::try_new(level)
-            .unwrap_or_else(|_| EnvFilter::new("info"));
+        let filter = EnvFilter::try_new(level).unwrap_or_else(|_| EnvFilter::new("info"));
 
         if json_format {
             tracing_subscriber::registry()

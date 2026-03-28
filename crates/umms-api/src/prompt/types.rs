@@ -9,18 +9,13 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Prompt editing mode.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum PromptMode {
     Original,
+    #[default]
     Modular,
     Preset,
-}
-
-impl Default for PromptMode {
-    fn default() -> Self {
-        Self::Modular
-    }
 }
 
 /// A single prompt block in modular mode.

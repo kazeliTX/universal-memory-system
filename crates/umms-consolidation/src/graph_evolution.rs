@@ -65,7 +65,9 @@ impl GraphEvolution {
             if let serde_json::Value::Object(ref mut merged_map) = merged {
                 for (key, value) in absorbed_map {
                     // Only insert if surviving doesn't already have this key.
-                    merged_map.entry(key.clone()).or_insert_with(|| value.clone());
+                    merged_map
+                        .entry(key.clone())
+                        .or_insert_with(|| value.clone());
                 }
             }
         }
@@ -154,7 +156,10 @@ impl GraphEvolution {
         }
 
         let elapsed_ms = start.elapsed().as_millis() as u64;
-        info!(pairs_scanned, nodes_merged, elapsed_ms, "Evolution complete");
+        info!(
+            pairs_scanned,
+            nodes_merged, elapsed_ms, "Evolution complete"
+        );
 
         Ok(EvolutionResult {
             pairs_scanned,
@@ -177,17 +182,14 @@ impl GraphEvolution {
     ) -> Result<usize> {
         // Get all nodes for the agent to build an importance lookup.
         let agent_id_owned;
-        let nodes = match agent_id {
-            Some(aid) => {
-                agent_id_owned = aid.clone();
-                graph.nodes_for_agent(&agent_id_owned, true).await?
-            }
-            None => {
-                // Without an agent_id, we cannot call nodes_for_agent.
-                // Return 0 strengthened edges.
-                debug!("No agent_id provided, skipping edge strengthening");
-                return Ok(0);
-            }
+        let nodes = if let Some(aid) = agent_id {
+            agent_id_owned = aid.clone();
+            graph.nodes_for_agent(&agent_id_owned, true).await?
+        } else {
+            // Without an agent_id, we cannot call nodes_for_agent.
+            // Return 0 strengthened edges.
+            debug!("No agent_id provided, skipping edge strengthening");
+            return Ok(0);
         };
 
         let node_importance: std::collections::HashMap<String, f32> = nodes
@@ -215,7 +217,7 @@ impl GraphEvolution {
                     .unwrap_or(0.0);
 
                 // Both endpoints must have above-average importance.
-                let avg_imp = (source_imp + target_imp) / 2.0;
+                let avg_imp = f32::midpoint(source_imp, target_imp);
                 if avg_imp > 0.5 {
                     // Boost weight by 10%, capped at 1.0.
                     let new_weight = (edge.weight * 1.1).min(1.0);

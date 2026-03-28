@@ -13,8 +13,8 @@ use arrow_schema::{DataType, Field, Schema};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
-use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::Table as LanceTable;
+use lancedb::query::{ExecutableQuery, QueryBase};
 use tokio::sync::Mutex;
 use tracing::instrument;
 
@@ -49,43 +49,40 @@ impl LanceVectorStore {
             .await
             .map_err(lance_err)?;
 
-        let table = match db.open_table("memories").execute().await {
-            Ok(t) => {
-                // Validate dimension matches. If the existing table was created
-                // with a different dimension, drop it and recreate.
-                let existing_schema = t.schema().await.map_err(lance_err)?;
-                let dim_matches = existing_schema
-                    .field_with_name("vector")
-                    .ok()
-                    .and_then(|f| match f.data_type() {
-                        DataType::FixedSizeList(_, size) => Some(*size as usize == vector_dim),
-                        _ => None,
-                    })
-                    .unwrap_or(false);
+        let table = if let Ok(t) = db.open_table("memories").execute().await {
+            // Validate dimension matches. If the existing table was created
+            // with a different dimension, drop it and recreate.
+            let existing_schema = t.schema().await.map_err(lance_err)?;
+            let dim_matches = existing_schema
+                .field_with_name("vector")
+                .ok()
+                .and_then(|f| match f.data_type() {
+                    DataType::FixedSizeList(_, size) => Some(*size as usize == vector_dim),
+                    _ => None,
+                })
+                .unwrap_or(false);
 
-                if dim_matches {
-                    t
-                } else {
-                    tracing::warn!(
-                        expected = vector_dim,
-                        "Vector dimension mismatch — dropping and recreating table"
-                    );
-                    let _ = db.drop_table("memories", &[]).await;
-                    let batch = empty_batch(&schema, vector_dim)?;
-                    db.create_table("memories", vec![batch])
-                        .execute()
-                        .await
-                        .map_err(lance_err)?
-                }
-            }
-            Err(_) => {
-                // Table doesn't exist yet — create with an empty batch.
+            if dim_matches {
+                t
+            } else {
+                tracing::warn!(
+                    expected = vector_dim,
+                    "Vector dimension mismatch — dropping and recreating table"
+                );
+                let _ = db.drop_table("memories", &[]).await;
                 let batch = empty_batch(&schema, vector_dim)?;
                 db.create_table("memories", vec![batch])
                     .execute()
                     .await
                     .map_err(lance_err)?
             }
+        } else {
+            // Table doesn't exist yet — create with an empty batch.
+            let batch = empty_batch(&schema, vector_dim)?;
+            db.create_table("memories", vec![batch])
+                .execute()
+                .await
+                .map_err(lance_err)?
         };
 
         Ok(Self {
@@ -130,10 +127,7 @@ impl VectorStore for LanceVectorStore {
         include_shared: bool,
     ) -> Result<Vec<ScoredMemory>> {
         let filter = if include_shared {
-            format!(
-                "(agent_id = '{}' OR scope = 'shared')",
-                agent_id.as_str()
-            )
+            format!("(agent_id = '{}' OR scope = 'shared')", agent_id.as_str())
         } else {
             format!("agent_id = '{}'", agent_id.as_str())
         };
@@ -148,10 +142,7 @@ impl VectorStore for LanceVectorStore {
             .await
             .map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
 
         let mut scored = Vec::new();
         for batch in &batches {
@@ -164,7 +155,11 @@ impl VectorStore for LanceVectorStore {
 
             for (i, entry) in entries.into_iter().enumerate() {
                 // Skip zero-vector placeholders (entries that had no real embedding).
-                if entry.vector.as_ref().map_or(true, |v| v.iter().all(|&x| x == 0.0)) {
+                if entry
+                    .vector
+                    .as_ref()
+                    .is_none_or(|v| v.iter().all(|&x| x == 0.0))
+                {
                     continue;
                 }
                 let distance = distances.map_or(0.0, |d| d.value(i));
@@ -201,10 +196,7 @@ impl VectorStore for LanceVectorStore {
             .await
             .map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
 
         for batch in &batches {
             let entries = batch_to_entries(batch, self.vector_dim)?;
@@ -275,11 +267,7 @@ impl VectorStore for LanceVectorStore {
         Ok(())
     }
 
-    async fn update_user_rating(
-        &self,
-        id: &MemoryId,
-        rating: Option<f32>,
-    ) -> Result<()> {
+    async fn update_user_rating(&self, id: &MemoryId, rating: Option<f32>) -> Result<()> {
         let table = self.table.lock().await;
         let filter = format!("id = '{}'", id.as_str());
         match rating {
@@ -308,10 +296,7 @@ impl VectorStore for LanceVectorStore {
     #[instrument(skip(self), fields(agent = %agent_id, include_shared))]
     async fn count(&self, agent_id: &AgentId, include_shared: bool) -> Result<u64> {
         let filter = if include_shared {
-            format!(
-                "(agent_id = '{}' OR scope = 'shared')",
-                agent_id.as_str()
-            )
+            format!("(agent_id = '{}' OR scope = 'shared')", agent_id.as_str())
         } else {
             format!("agent_id = '{}'", agent_id.as_str())
         };
@@ -324,10 +309,7 @@ impl VectorStore for LanceVectorStore {
             .await
             .map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
         let total: usize = batches.iter().map(RecordBatch::num_rows).sum();
         Ok(total as u64)
     }
@@ -341,10 +323,7 @@ impl VectorStore for LanceVectorStore {
         include_shared: bool,
     ) -> Result<Vec<MemoryEntry>> {
         let filter = if include_shared {
-            format!(
-                "(agent_id = '{}' OR scope = 'shared')",
-                agent_id.as_str()
-            )
+            format!("(agent_id = '{}' OR scope = 'shared')", agent_id.as_str())
         } else {
             format!("agent_id = '{}'", agent_id.as_str())
         };
@@ -357,10 +336,7 @@ impl VectorStore for LanceVectorStore {
             .await
             .map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
 
         let mut all_entries = Vec::new();
         for batch in &batches {
@@ -385,19 +361,13 @@ impl VectorStore for LanceVectorStore {
         }
 
         let filter = if include_shared {
-            format!(
-                "(agent_id = '{}' OR scope = 'shared')",
-                agent_id.as_str()
-            )
+            format!("(agent_id = '{}' OR scope = 'shared')", agent_id.as_str())
         } else {
             format!("agent_id = '{}'", agent_id.as_str())
         };
 
         let table = self.table.lock().await;
-        table
-            .delete(&filter)
-            .await
-            .map_err(lance_err)?;
+        table.delete(&filter).await.map_err(lance_err)?;
 
         tracing::info!(agent_id = %agent_id, deleted = count, "deleted vector entries");
         Ok(count)
@@ -440,6 +410,7 @@ fn build_schema(vector_dim: usize) -> Schema {
 // ---------------------------------------------------------------------------
 
 /// Convert a slice of [`MemoryEntry`] to an Arrow [`RecordBatch`].
+#[allow(clippy::too_many_lines)]
 fn entries_to_batch(
     entries: &[MemoryEntry],
     schema: &Arc<Schema>,
@@ -449,29 +420,21 @@ fn entries_to_batch(
 
     let ids: Vec<&str> = entries.iter().map(|e| e.id.as_str()).collect();
     let agent_ids: Vec<&str> = entries.iter().map(|e| e.agent_id.as_str()).collect();
-    let layers: Vec<String> = entries
-        .iter()
-        .map(|e| serialize_enum(&e.layer))
-        .collect();
-    let scopes: Vec<String> = entries
-        .iter()
-        .map(|e| serialize_enum(&e.scope))
-        .collect();
+    let layers: Vec<String> = entries.iter().map(|e| serialize_enum(&e.layer)).collect();
+    let scopes: Vec<String> = entries.iter().map(|e| serialize_enum(&e.scope)).collect();
     let modalities: Vec<String> = entries
         .iter()
         .map(|e| serialize_enum(&e.modality))
         .collect();
-    let content_texts: Vec<Option<&str>> = entries
-        .iter()
-        .map(|e| e.content_text.as_deref())
-        .collect();
+    let content_texts: Vec<Option<&str>> =
+        entries.iter().map(|e| e.content_text.as_deref()).collect();
 
     // Build flat vector array: entries without a vector get a zero-vector placeholder.
     let mut flat_values: Vec<f32> = Vec::with_capacity(len * vector_dim);
     for entry in entries {
         match &entry.vector {
             Some(v) if v.len() == vector_dim => flat_values.extend_from_slice(v),
-            _ => flat_values.extend(std::iter::repeat(0.0_f32).take(vector_dim)),
+            _ => flat_values.extend(std::iter::repeat_n(0.0_f32, vector_dim)),
         }
     }
     let values_array = Float32Array::from(flat_values);
@@ -506,29 +469,55 @@ fn entries_to_batch(
         vec![
             Arc::new(StringArray::from(ids)) as ArrayRef,
             Arc::new(StringArray::from(agent_ids)) as ArrayRef,
-            Arc::new(StringArray::from(layers.iter().map(|s| s.as_str()).collect::<Vec<_>>()))
-                as ArrayRef,
-            Arc::new(StringArray::from(scopes.iter().map(|s| s.as_str()).collect::<Vec<_>>()))
-                as ArrayRef,
             Arc::new(StringArray::from(
-                modalities.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                layers
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
+            )) as ArrayRef,
+            Arc::new(StringArray::from(
+                scopes
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
+            )) as ArrayRef,
+            Arc::new(StringArray::from(
+                modalities
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
             )) as ArrayRef,
             Arc::new(StringArray::from(content_texts)) as ArrayRef,
             Arc::new(vector_list) as ArrayRef,
             Arc::new(Float32Array::from(importances)) as ArrayRef,
             Arc::new(StringArray::from(
-                decay_cats.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-            )) as ArrayRef,
-            Arc::new(StringArray::from(tags.iter().map(|s| s.as_str()).collect::<Vec<_>>()))
-                as ArrayRef,
-            Arc::new(StringArray::from(
-                metadata.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                decay_cats
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
             )) as ArrayRef,
             Arc::new(StringArray::from(
-                created.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                tags.iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
             )) as ArrayRef,
             Arc::new(StringArray::from(
-                accessed.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                metadata
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
+            )) as ArrayRef,
+            Arc::new(StringArray::from(
+                created
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
+            )) as ArrayRef,
+            Arc::new(StringArray::from(
+                accessed
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
             )) as ArrayRef,
             Arc::new(UInt64Array::from(access_counts)) as ArrayRef,
             Arc::new(Float32Array::from(user_ratings)) as ArrayRef,
@@ -582,6 +571,7 @@ fn empty_batch(schema: &Arc<Schema>, vector_dim: usize) -> Result<RecordBatch> {
 ///
 /// The batch may have extra columns (e.g. `_distance` from vector search) —
 /// we only read the columns we know about.
+#[allow(clippy::too_many_lines)]
 fn batch_to_entries(batch: &RecordBatch, _vector_dim: usize) -> Result<Vec<MemoryEntry>> {
     let n = batch.num_rows();
     if n == 0 {
@@ -663,19 +653,20 @@ fn batch_to_entries(batch: &RecordBatch, _vector_dim: usize) -> Result<Vec<Memor
 
         let importance = importances.value(i);
         let decay_category: DecayCategory = deserialize_enum(decay_cats.value(i));
-        let tags_parsed: Vec<String> =
-            serde_json::from_str(tags_col.value(i)).unwrap_or_default();
+        let tags_parsed: Vec<String> = serde_json::from_str(tags_col.value(i)).unwrap_or_default();
         let metadata_parsed: serde_json::Value =
             serde_json::from_str(meta_col.value(i)).unwrap_or(serde_json::Value::Null);
         let created_at = DateTime::parse_from_rfc3339(created_col.value(i))
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now());
+            .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc));
         let accessed_at = DateTime::parse_from_rfc3339(accessed_col.value(i))
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now());
+            .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc));
         let access_count = access_counts.value(i);
         let user_rating = user_rating_col.and_then(|col| {
-            if col.is_null(i) { None } else { Some(col.value(i)) }
+            if col.is_null(i) {
+                None
+            } else {
+                Some(col.value(i))
+            }
         });
 
         entries.push(MemoryEntry {
@@ -775,9 +766,16 @@ mod tests {
     #[tokio::test]
     async fn insert_and_get_roundtrip() {
         let path = temp_db_path("roundtrip");
-        let store = LanceVectorStore::new(path.to_str().unwrap(), 8).await.unwrap();
+        let store = LanceVectorStore::new(path.to_str().unwrap(), 8)
+            .await
+            .unwrap();
 
-        let entry = make_entry("agent-a", IsolationScope::Private, Some(random_vector(8, 1)), 8);
+        let entry = make_entry(
+            "agent-a",
+            IsolationScope::Private,
+            Some(random_vector(8, 1)),
+            8,
+        );
         let id = entry.id.clone();
 
         store.insert(&entry).await.unwrap();
@@ -802,7 +800,9 @@ mod tests {
     #[tokio::test]
     async fn search_by_vector_similarity() {
         let path = temp_db_path("search");
-        let store = LanceVectorStore::new(path.to_str().unwrap(), 8).await.unwrap();
+        let store = LanceVectorStore::new(path.to_str().unwrap(), 8)
+            .await
+            .unwrap();
 
         let agent = AgentId::from_str("agent-a").unwrap();
 
@@ -830,7 +830,9 @@ mod tests {
     #[tokio::test]
     async fn agent_isolation() {
         let path = temp_db_path("isolation");
-        let store = LanceVectorStore::new(path.to_str().unwrap(), 8).await.unwrap();
+        let store = LanceVectorStore::new(path.to_str().unwrap(), 8)
+            .await
+            .unwrap();
 
         let v = random_vector(8, 1);
         let e_a = make_entry("agent-a", IsolationScope::Private, Some(v.clone()), 8);
@@ -857,7 +859,9 @@ mod tests {
     #[tokio::test]
     async fn search_include_shared() {
         let path = temp_db_path("shared");
-        let store = LanceVectorStore::new(path.to_str().unwrap(), 8).await.unwrap();
+        let store = LanceVectorStore::new(path.to_str().unwrap(), 8)
+            .await
+            .unwrap();
 
         let v = random_vector(8, 1);
         let e_private = make_entry("agent-a", IsolationScope::Private, Some(v.clone()), 8);
@@ -887,9 +891,16 @@ mod tests {
     #[tokio::test]
     async fn delete_removes_entry() {
         let path = temp_db_path("delete");
-        let store = LanceVectorStore::new(path.to_str().unwrap(), 8).await.unwrap();
+        let store = LanceVectorStore::new(path.to_str().unwrap(), 8)
+            .await
+            .unwrap();
 
-        let entry = make_entry("agent-a", IsolationScope::Private, Some(random_vector(8, 1)), 8);
+        let entry = make_entry(
+            "agent-a",
+            IsolationScope::Private,
+            Some(random_vector(8, 1)),
+            8,
+        );
         let id = entry.id.clone();
 
         store.insert(&entry).await.unwrap();
@@ -908,9 +919,16 @@ mod tests {
     #[tokio::test]
     async fn update_metadata_changes_importance() {
         let path = temp_db_path("update");
-        let store = LanceVectorStore::new(path.to_str().unwrap(), 8).await.unwrap();
+        let store = LanceVectorStore::new(path.to_str().unwrap(), 8)
+            .await
+            .unwrap();
 
-        let entry = make_entry("agent-a", IsolationScope::Private, Some(random_vector(8, 1)), 8);
+        let entry = make_entry(
+            "agent-a",
+            IsolationScope::Private,
+            Some(random_vector(8, 1)),
+            8,
+        );
         let id = entry.id.clone();
         store.insert(&entry).await.unwrap();
 
@@ -932,22 +950,39 @@ mod tests {
     #[tokio::test]
     async fn count_returns_correct_numbers() {
         let path = temp_db_path("count");
-        let store = LanceVectorStore::new(path.to_str().unwrap(), 8).await.unwrap();
+        let store = LanceVectorStore::new(path.to_str().unwrap(), 8)
+            .await
+            .unwrap();
 
         let agent = AgentId::from_str("agent-a").unwrap();
 
         assert_eq!(store.count(&agent, false).await.unwrap(), 0);
 
         store
-            .insert(&make_entry("agent-a", IsolationScope::Private, Some(random_vector(8, 1)), 8))
+            .insert(&make_entry(
+                "agent-a",
+                IsolationScope::Private,
+                Some(random_vector(8, 1)),
+                8,
+            ))
             .await
             .unwrap();
         store
-            .insert(&make_entry("agent-a", IsolationScope::Private, Some(random_vector(8, 2)), 8))
+            .insert(&make_entry(
+                "agent-a",
+                IsolationScope::Private,
+                Some(random_vector(8, 2)),
+                8,
+            ))
             .await
             .unwrap();
         store
-            .insert(&make_entry("agent-b", IsolationScope::Shared, Some(random_vector(8, 3)), 8))
+            .insert(&make_entry(
+                "agent-b",
+                IsolationScope::Shared,
+                Some(random_vector(8, 3)),
+                8,
+            ))
             .await
             .unwrap();
 
@@ -964,7 +999,9 @@ mod tests {
     #[tokio::test]
     async fn insert_batch_inserts_multiple() {
         let path = temp_db_path("batch");
-        let store = LanceVectorStore::new(path.to_str().unwrap(), 8).await.unwrap();
+        let store = LanceVectorStore::new(path.to_str().unwrap(), 8)
+            .await
+            .unwrap();
 
         let entries: Vec<MemoryEntry> = (0..5)
             .map(|i| {

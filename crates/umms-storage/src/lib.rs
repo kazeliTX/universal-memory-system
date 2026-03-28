@@ -1,4 +1,3 @@
-
 //! # umms-storage
 //!
 //! Pluggable storage backends for vector, graph, file, and cache layers.

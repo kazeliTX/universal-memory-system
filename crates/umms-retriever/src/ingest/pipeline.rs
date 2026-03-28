@@ -104,6 +104,7 @@ impl IngestPipeline {
     }
 
     /// Attach a tag extractor to the pipeline for automatic tag extraction.
+    #[must_use]
     pub fn with_tag_extractor(mut self, extractor: Arc<TagExtractor>) -> Self {
         self.tag_extractor = Some(extractor);
         self
@@ -113,6 +114,7 @@ impl IngestPipeline {
     ///
     /// When set, [`Self::ingest`] will use the generative model to extract
     /// document structure instead of the heuristic fallback.
+    #[must_use]
     pub fn with_model_pool(mut self, pool: Arc<ModelPool>) -> Self {
         self.model_pool = Some(pool);
         self
@@ -122,6 +124,7 @@ impl IngestPipeline {
     ///
     /// When set, [`Self::ingest`] will create KgNodes for each chunk and
     /// connect them with "follows" and "shares_tag" edges.
+    #[must_use]
     pub fn with_graph(mut self, graph: Arc<dyn KnowledgeGraphStore>) -> Self {
         self.graph = Some(graph);
         self
@@ -132,6 +135,7 @@ impl IngestPipeline {
     /// `skeleton` is optional — if `None`, a fallback skeleton is generated
     /// from the document text (no LLM call). Pass a pre-extracted skeleton
     /// if you've already called the LLM for extraction.
+    #[allow(clippy::too_many_lines)]
     #[instrument(skip(self, text, skeleton), fields(agent = %agent_id, text_len = text.len()))]
     pub async fn ingest(
         &self,
@@ -191,7 +195,7 @@ impl IngestPipeline {
                 Ok(tag_ids) => {
                     info!(
                         chunks = tag_ids.len(),
-                        total_tags = tag_ids.iter().map(|t| t.len()).sum::<usize>(),
+                        total_tags = tag_ids.iter().map(Vec::len).sum::<usize>(),
                         "Tags extracted from document"
                     );
                     Some(tag_ids)
@@ -245,8 +249,7 @@ impl IngestPipeline {
 
             let section_name = skel
                 .section_for(i)
-                .map(|s| s.title.clone())
-                .unwrap_or_else(|| "General".to_owned());
+                .map_or_else(|| "General".to_owned(), |s| s.title.clone());
 
             chunk_tags.push(format!("section:{section_name}"));
 
@@ -254,7 +257,7 @@ impl IngestPipeline {
 
             let entry = MemoryEntryBuilder::new(agent_id.clone(), Modality::Text)
                 .layer(MemoryLayer::EpisodicMemory)
-                .scope(scope.clone())
+                .scope(scope)
                 .content_text(&chunk.text)
                 .vector(vector)
                 .importance(0.5)
@@ -285,15 +288,22 @@ impl IngestPipeline {
         // Stage 5: Build graph nodes and edges (if graph store is available)
         let (graph_nodes_created, graph_edges_created) = if let Some(ref graph) = self.graph {
             let graph_start = std::time::Instant::now();
-            let memory_ids: Vec<String> = chunk_details.iter().map(|cd| cd.memory_id.clone()).collect();
-            let texts: Vec<String> = chunk_details.iter().map(|cd| cd.original_text.clone()).collect();
-            let tags_per: Vec<Vec<String>> = chunk_details.iter().map(|cd| cd.tags.clone()).collect();
+            let memory_ids: Vec<String> = chunk_details
+                .iter()
+                .map(|cd| cd.memory_id.clone())
+                .collect();
+            let texts: Vec<String> = chunk_details
+                .iter()
+                .map(|cd| cd.original_text.clone())
+                .collect();
+            let tags_per: Vec<Vec<String>> =
+                chunk_details.iter().map(|cd| cd.tags.clone()).collect();
 
             let result = GraphBuilder::build_from_chunks(
                 graph.as_ref(),
                 &memory_ids,
                 &texts,
-                &agent_id,
+                agent_id,
                 &tags_per,
             )
             .await;

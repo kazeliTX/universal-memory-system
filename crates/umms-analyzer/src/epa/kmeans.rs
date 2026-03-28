@@ -90,8 +90,7 @@ fn kmeans_plus_plus(points: &[&[f32]], weights: &[f32], k: usize) -> Vec<Vec<f32
         .iter()
         .enumerate()
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(i, _)| i)
-        .unwrap_or(0);
+        .map_or(0, |(i, _)| i);
     centroids.push(points[first].to_vec());
 
     // Select remaining centroids
@@ -111,8 +110,7 @@ fn kmeans_plus_plus(points: &[&[f32]], weights: &[f32], k: usize) -> Vec<Vec<f32
             .iter()
             .enumerate()
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(i, _)| i)
-            .unwrap_or(0);
+            .map_or(0, |(i, _)| i);
         centroids.push(points[next].to_vec());
     }
 
@@ -129,8 +127,7 @@ fn assign(points: &[&[f32]], centroids: &[Vec<f32>]) -> Vec<usize> {
                 .enumerate()
                 .map(|(ci, c)| (ci, squared_euclidean(p, c)))
                 .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-                .map(|(ci, _)| ci)
-                .unwrap_or(0)
+                .map_or(0, |(ci, _)| ci)
         })
         .collect()
 }

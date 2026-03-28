@@ -139,11 +139,23 @@ mod tests {
 
     #[test]
     fn model_task_from_str_loose() {
-        assert_eq!(ModelTask::from_str_loose("embedding"), Some(ModelTask::Embedding));
-        assert_eq!(ModelTask::from_str_loose("GENERATION"), Some(ModelTask::Generation));
-        assert_eq!(ModelTask::from_str_loose("entity_extraction"), Some(ModelTask::EntityExtraction));
+        assert_eq!(
+            ModelTask::from_str_loose("embedding"),
+            Some(ModelTask::Embedding)
+        );
+        assert_eq!(
+            ModelTask::from_str_loose("GENERATION"),
+            Some(ModelTask::Generation)
+        );
+        assert_eq!(
+            ModelTask::from_str_loose("entity_extraction"),
+            Some(ModelTask::EntityExtraction)
+        );
         assert_eq!(ModelTask::from_str_loose("chat"), Some(ModelTask::Chat));
-        assert_eq!(ModelTask::from_str_loose("reranking"), Some(ModelTask::Reranking));
+        assert_eq!(
+            ModelTask::from_str_loose("reranking"),
+            Some(ModelTask::Reranking)
+        );
         assert_eq!(ModelTask::from_str_loose("unknown"), None);
     }
 
@@ -179,7 +191,9 @@ mod tests {
                 available: false,
             }
         }
-        fn supports(&self, _task: ModelTask) -> bool { false }
+        fn supports(&self, _task: ModelTask) -> bool {
+            false
+        }
         async fn embed(&self, _text: &str) -> Result<Vec<f32>> {
             Ok(vec![0.0; 8])
         }
@@ -189,7 +203,9 @@ mod tests {
         async fn generate(&self, _prompt: &str, _max_tokens: Option<usize>) -> Result<String> {
             Ok(String::new())
         }
-        fn embedding_dimension(&self) -> Option<usize> { Some(8) }
+        fn embedding_dimension(&self) -> Option<usize> {
+            Some(8)
+        }
     }
 
     #[tokio::test]

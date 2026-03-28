@@ -24,14 +24,14 @@ Text:
 ---"#;
 
 /// Prompt template for multi-entry summarization.
-const SUMMARIZE_PROMPT: &str = r#"Summarize the following memory entries into a single coherent paragraph.
+const SUMMARIZE_PROMPT: &str = r"Summarize the following memory entries into a single coherent paragraph.
 Preserve key technical details, names, and relationships.
 Return ONLY the summary text, no explanation or formatting.
 
 Entries:
 ---
 {entries}
----"#;
+---";
 
 /// Prompt template for entity resolution.
 const ENTITY_RESOLUTION_PROMPT: &str = r#"Do these two entity names refer to the same real-world concept?
@@ -73,9 +73,7 @@ impl GenerativeLlm for ModelPoolLlm {
     }
 
     async fn are_same_entity(&self, a: &str, b: &str) -> Result<f32> {
-        let prompt = ENTITY_RESOLUTION_PROMPT
-            .replace("{a}", a)
-            .replace("{b}", b);
+        let prompt = ENTITY_RESOLUTION_PROMPT.replace("{a}", a).replace("{b}", b);
 
         let response = self.pool.generate(&prompt).await?;
         parse_entity_resolution(&response)
@@ -83,6 +81,7 @@ impl GenerativeLlm for ModelPoolLlm {
 }
 
 /// Parse an LLM entity extraction response into structured entities.
+#[allow(clippy::unnecessary_wraps)]
 fn parse_entities(response: &str) -> Result<Vec<ExtractedEntity>> {
     let json_str = response
         .trim()
@@ -118,7 +117,7 @@ fn parse_entities(response: &str) -> Result<Vec<ExtractedEntity>> {
                                             .to_owned(),
                                         weight: r
                                             .get("weight")
-                                            .and_then(|v| v.as_f64())
+                                            .and_then(serde_json::Value::as_f64)
                                             .unwrap_or(0.5)
                                             as f32,
                                     })
@@ -149,6 +148,7 @@ fn parse_entities(response: &str) -> Result<Vec<ExtractedEntity>> {
 }
 
 /// Parse an entity resolution response into a confidence score.
+#[allow(clippy::unnecessary_wraps)]
 fn parse_entity_resolution(response: &str) -> Result<f32> {
     let json_str = response
         .trim()
@@ -161,7 +161,7 @@ fn parse_entity_resolution(response: &str) -> Result<f32> {
         Ok(v) => {
             let confidence = v
                 .get("confidence")
-                .and_then(|c| c.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0) as f32;
             Ok(confidence)
         }

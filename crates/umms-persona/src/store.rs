@@ -8,7 +8,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use tokio::sync::Mutex;
 
 use umms_core::error::{StorageError, UmmsError};
@@ -26,11 +26,9 @@ impl PersonaStore {
     ///
     /// Pass `":memory:"` for an in-memory database (useful for tests).
     pub fn new(path: impl AsRef<Path>) -> Result<Self, UmmsError> {
-        let conn = Connection::open(path.as_ref()).map_err(|e| {
-            StorageError::ConnectionFailed {
-                backend: "sqlite-persona".into(),
-                reason: e.to_string(),
-            }
+        let conn = Connection::open(path.as_ref()).map_err(|e| StorageError::ConnectionFailed {
+            backend: "sqlite-persona".into(),
+            reason: e.to_string(),
         })?;
 
         Self::run_migrations(&conn)?;
@@ -67,10 +65,9 @@ impl PersonaStore {
         let expertise_json = serde_json::to_string(&persona.expertise)
             .map_err(|e| UmmsError::Internal(format!("failed to serialize expertise: {e}")))?;
         let system_prompt = persona.system_prompt.clone();
-        let retrieval_json = serde_json::to_string(&persona.retrieval_config)
-            .map_err(|e| {
-                UmmsError::Internal(format!("failed to serialize retrieval_config: {e}"))
-            })?;
+        let retrieval_json = serde_json::to_string(&persona.retrieval_config).map_err(|e| {
+            UmmsError::Internal(format!("failed to serialize retrieval_config: {e}"))
+        })?;
         let created_at = persona.created_at.to_rfc3339();
         let updated_at = persona.updated_at.to_rfc3339();
 
@@ -100,10 +97,7 @@ impl PersonaStore {
         .await
         .map_err(|e| UmmsError::Internal(format!("spawn_blocking join error: {e}")))??;
 
-        tracing::debug!(
-            agent_id = persona.agent_id.as_str(),
-            "saved persona"
-        );
+        tracing::debug!(agent_id = persona.agent_id.as_str(), "saved persona");
         Ok(())
     }
 
@@ -141,9 +135,27 @@ impl PersonaStore {
 
             match row {
                 None => Ok(None),
-                Some((aid, name, role, desc, expertise_json, sys_prompt, ret_json, created, updated)) => {
+                Some((
+                    aid,
+                    name,
+                    role,
+                    desc,
+                    expertise_json,
+                    sys_prompt,
+                    ret_json,
+                    created,
+                    updated,
+                )) => {
                     let persona = parse_persona_row(
-                        aid, name, role, desc, expertise_json, sys_prompt, ret_json, created, updated,
+                        &aid,
+                        name,
+                        role,
+                        desc,
+                        &expertise_json,
+                        sys_prompt,
+                        &ret_json,
+                        &created,
+                        &updated,
                     )?;
                     Ok(Some(persona))
                 }
@@ -188,7 +200,7 @@ impl PersonaStore {
                 let (aid, name, role, desc, expertise_json, sys_prompt, ret_json, created, updated) =
                     row.map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
                 let persona = parse_persona_row(
-                    aid, name, role, desc, expertise_json, sys_prompt, ret_json, created, updated,
+                    &aid, name, role, desc, &expertise_json, sys_prompt, &ret_json, &created, &updated,
                 )?;
                 personas.push(persona);
             }
@@ -221,27 +233,28 @@ impl PersonaStore {
 }
 
 /// Parse a raw row tuple into an `AgentPersona`.
+#[allow(clippy::too_many_arguments)]
 fn parse_persona_row(
-    agent_id_str: String,
+    agent_id_str: &str,
     name: String,
     role: String,
     description: String,
-    expertise_json: String,
+    expertise_json: &str,
     system_prompt: String,
-    retrieval_json: String,
-    created_at_str: String,
-    updated_at_str: String,
+    retrieval_json: &str,
+    created_at_str: &str,
+    updated_at_str: &str,
 ) -> Result<AgentPersona, UmmsError> {
-    let agent_id = AgentId::from_str(&agent_id_str)
+    let agent_id = AgentId::from_str(agent_id_str)
         .map_err(|e| UmmsError::Internal(format!("invalid agent_id in DB: {e}")))?;
-    let expertise: Vec<String> = serde_json::from_str(&expertise_json)
+    let expertise: Vec<String> = serde_json::from_str(expertise_json)
         .map_err(|e| UmmsError::Internal(format!("failed to parse expertise JSON: {e}")))?;
-    let retrieval_config: AgentRetrievalConfig = serde_json::from_str(&retrieval_json)
+    let retrieval_config: AgentRetrievalConfig = serde_json::from_str(retrieval_json)
         .map_err(|e| UmmsError::Internal(format!("failed to parse retrieval_config JSON: {e}")))?;
-    let created_at: DateTime<Utc> = DateTime::parse_from_rfc3339(&created_at_str)
+    let created_at: DateTime<Utc> = DateTime::parse_from_rfc3339(created_at_str)
         .map_err(|e| UmmsError::Internal(format!("failed to parse created_at: {e}")))?
         .with_timezone(&Utc);
-    let updated_at: DateTime<Utc> = DateTime::parse_from_rfc3339(&updated_at_str)
+    let updated_at: DateTime<Utc> = DateTime::parse_from_rfc3339(updated_at_str)
         .map_err(|e| UmmsError::Internal(format!("failed to parse updated_at: {e}")))?
         .with_timezone(&Utc);
 
@@ -329,7 +342,10 @@ mod tests {
         let store = PersonaStore::new(":memory:").unwrap();
         store.save(&make_persona("b-agent", "Bravo")).await.unwrap();
         store.save(&make_persona("a-agent", "Alpha")).await.unwrap();
-        store.save(&make_persona("c-agent", "Charlie")).await.unwrap();
+        store
+            .save(&make_persona("c-agent", "Charlie"))
+            .await
+            .unwrap();
 
         let all = store.list().await.unwrap();
         assert_eq!(all.len(), 3);
@@ -377,9 +393,7 @@ mod tests {
     #[tokio::test]
     async fn delete_nonexistent_is_ok() {
         let store = PersonaStore::new(":memory:").unwrap();
-        let result = store
-            .delete(&AgentId::from_str("ghost").unwrap())
-            .await;
+        let result = store.delete(&AgentId::from_str("ghost").unwrap()).await;
         assert!(result.is_ok());
     }
 }

@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use chrono::Utc;
 use serde::Deserialize;
 
@@ -15,11 +15,11 @@ use umms_observe::{AuditEventBuilder, AuditEventType};
 
 use umms_analyzer::intent::IntentClassifier;
 
+use crate::AppState;
 use crate::prompt::diary_generator::DiaryGenerator;
 use crate::prompt::engine::PromptEngine;
 use crate::response::{ChatResponse, ChatSource};
 use crate::session::{self, ChatMessage as SessionChatMessage, ChatSession, ChatSourceRecord};
-use crate::AppState;
 
 /// Chat message in conversation history (backwards-compatible input format).
 #[derive(Debug, Deserialize)]
@@ -52,6 +52,7 @@ pub struct ChatRequest {
 /// 7. Append messages to session and save
 /// 8. Spawn background diary generation (fire-and-forget)
 /// 9. Return response with session_id
+#[allow(clippy::too_many_lines)]
 pub async fn chat(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ChatRequest>,
@@ -119,15 +120,10 @@ pub async fn chat(
         .await
         .map_err(|e| format!("Persona lookup failed: {e}"))?;
 
-    let system_prompt = persona
-        .as_ref()
-        .map(|p| p.system_prompt.clone())
-        .unwrap_or_else(|| {
-            format!(
-                "You are a helpful AI assistant named {}.",
-                body.agent_id
-            )
-        });
+    let system_prompt = persona.as_ref().map_or_else(
+        || format!("You are a helpful AI assistant named {}.", body.agent_id),
+        |p| p.system_prompt.clone(),
+    );
 
     // 4. Load diary entries for this agent
     let diary_entries = state
@@ -151,7 +147,10 @@ pub async fn chat(
     let skip_retrieval = IntentClassifier::is_non_retrieval_intent(&body.message);
     if !skip_retrieval {
         if let Some(ref retriever) = state.retriever {
-            if let Ok(pr) = retriever.retrieve_with_sources(&body.message, &agent_id).await {
+            if let Ok(pr) = retriever
+                .retrieve_with_sources(&body.message, &agent_id)
+                .await
+            {
                 sources = pr
                     .retrieval
                     .entries
@@ -222,18 +221,23 @@ pub async fn chat(
     vars.insert("user_message".to_owned(), body.message.clone());
 
     // Runtime variables for the new prompt system
-    let agent_name = persona.as_ref().map(|p| p.name.clone()).unwrap_or_else(|| body.agent_id.clone());
-    let agent_role = persona.as_ref().map(|p| p.role.clone()).unwrap_or_default();
+    let agent_name = persona
+        .as_ref()
+        .map_or_else(|| body.agent_id.clone(), |p| p.name.clone());
+    let agent_role = persona
+        .as_ref()
+        .map_or_else(String::default, |p| p.role.clone());
     vars.insert("AgentName".to_owned(), agent_name);
     vars.insert("AgentRole".to_owned(), agent_role);
-    vars.insert("DateTime".to_owned(), Utc::now().format("%Y-%m-%d %H:%M").to_string());
+    vars.insert(
+        "DateTime".to_owned(),
+        Utc::now().format("%Y-%m-%d %H:%M").to_string(),
+    );
     vars.insert("SessionTitle".to_owned(), current_session.title.clone());
 
     let full_prompt = match state.prompt_store.get_prompt_config(&body.agent_id).await {
-        Ok(Some(prompt_config)) => {
-            PromptEngine::build_prompt(&prompt_config, &vars)
-                .map_err(|e| format!("Prompt build failed: {e}"))?
-        }
+        Ok(Some(prompt_config)) => PromptEngine::build_prompt(&prompt_config, &vars)
+            .map_err(|e| format!("Prompt build failed: {e}"))?,
         _ => {
             // Fallback to legacy template engine
             state
@@ -303,16 +307,14 @@ pub async fn chat(
 
     // 11. Record audit
     state.audit.record(
-        AuditEventBuilder::new(AuditEventType::Encode, body.agent_id.clone()).details(
-            serde_json::json!({
-                "action": "chat",
-                "session_id": session_id,
-                "message_preview": &body.message[..body.message.len().min(100)],
-                "sources": sources.len(),
-                "diary_entries": diary_entries.len(),
-                "latency_ms": latency_ms,
-            }),
-        ),
+        AuditEventBuilder::new(AuditEventType::Encode, &agent_id).details(serde_json::json!({
+            "action": "chat",
+            "session_id": session_id,
+            "message_preview": &body.message[..body.message.len().min(100)],
+            "sources": sources.len(),
+            "diary_entries": diary_entries.len(),
+            "latency_ms": latency_ms,
+        })),
     );
 
     // 12. Spawn background diary generation (fire-and-forget, no latency impact)

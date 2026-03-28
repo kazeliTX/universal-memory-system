@@ -1,4 +1,3 @@
-
 //! # umms-retriever
 //!
 //! Three-stage memory retrieval pipeline:

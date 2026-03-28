@@ -14,10 +14,7 @@ use crate::AppState;
 /// Polls the audit log every 2 seconds and sends any new events as JSON
 /// text frames. A future iteration will use `tokio::sync::broadcast` for
 /// true push semantics.
-pub async fn events_ws(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<AppState>>,
-) -> Response {
+pub async fn events_ws(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> Response {
     ws.on_upgrade(move |socket| handle_events(socket, state))
 }
 

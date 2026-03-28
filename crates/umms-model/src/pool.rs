@@ -20,9 +20,7 @@ use umms_core::traits::Encoder;
 
 use crate::gemini_provider::GeminiProvider;
 use crate::stats::EncoderStats;
-use crate::trace::{
-    estimate_tokens, new_trace_id, truncate_preview, ModelTrace, TraceStore,
-};
+use crate::trace::{ModelTrace, TraceStore, estimate_tokens, new_trace_id, truncate_preview};
 
 // ---------------------------------------------------------------------------
 // Model activation status types
@@ -117,7 +115,10 @@ impl ModelPool {
             (ModelTask::Embedding, &config.routing.embedding),
             (ModelTask::Generation, &config.routing.generation),
             (ModelTask::Reranking, &config.routing.reranking),
-            (ModelTask::EntityExtraction, &config.routing.entity_extraction),
+            (
+                ModelTask::EntityExtraction,
+                &config.routing.entity_extraction,
+            ),
             (ModelTask::Chat, &config.routing.chat),
         ];
 
@@ -156,31 +157,35 @@ impl ModelPool {
 
     /// List all registered models with their info.
     pub fn models(&self) -> Vec<ModelInfo> {
-        self.providers
-            .values()
-            .map(|p| p.info())
-            .collect()
+        self.providers.values().map(|p| p.info()).collect()
     }
 
     /// Get activation status of all registered models (with statistics).
     pub fn status(&self) -> Vec<ModelStatus> {
-        self.providers.values().map(|p| {
-            let info = p.info();
-            let snap = p.stats.snapshot();
-            ModelStatus {
-                id: info.id,
-                provider: info.provider,
-                model_name: info.model_name,
-                available: info.available,
-                tasks: info.tasks.iter().map(|t| t.to_string()).collect(),
-                dimension: info.dimension,
-                stats: Some(ModelStats {
-                    total_requests: snap.total_requests,
-                    total_errors: snap.total_errors,
-                    avg_latency_ms: snap.avg_latency_ms,
-                }),
-            }
-        }).collect()
+        self.providers
+            .values()
+            .map(|p| {
+                let info = p.info();
+                let snap = p.stats.snapshot();
+                ModelStatus {
+                    id: info.id,
+                    provider: info.provider,
+                    model_name: info.model_name,
+                    available: info.available,
+                    tasks: info
+                        .tasks
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect(),
+                    dimension: info.dimension,
+                    stats: Some(ModelStats {
+                        total_requests: snap.total_requests,
+                        total_errors: snap.total_errors,
+                        avg_latency_ms: snap.avg_latency_ms,
+                    }),
+                }
+            })
+            .collect()
     }
 
     /// Whether any providers are registered.
@@ -207,7 +212,10 @@ impl ModelPool {
         })?;
 
         let info = provider.info();
-        let model_id = self.model_id_for(ModelTask::Embedding).unwrap_or("unknown").to_owned();
+        let model_id = self
+            .model_id_for(ModelTask::Embedding)
+            .unwrap_or("unknown")
+            .to_owned();
         let start = Instant::now();
 
         let result = provider.embed(text).await;
@@ -226,7 +234,7 @@ impl ModelPool {
             success: result.is_ok(),
             error_message: result.as_ref().err().map(|e| format!("{e}")),
             output_preview: None,
-            output_dimension: result.as_ref().ok().map(|v| v.len()),
+            output_dimension: result.as_ref().ok().map(std::vec::Vec::len),
             output_tokens_estimate: None,
             latency_ms,
             retry_count: 0,
@@ -247,7 +255,10 @@ impl ModelPool {
         })?;
 
         let info = provider.info();
-        let model_id = self.model_id_for(ModelTask::Embedding).unwrap_or("unknown").to_owned();
+        let model_id = self
+            .model_id_for(ModelTask::Embedding)
+            .unwrap_or("unknown")
+            .to_owned();
         let start = Instant::now();
 
         let result = provider.embed_batch(texts).await;
@@ -256,10 +267,7 @@ impl ModelPool {
         let input_preview = if texts.is_empty() {
             "(empty batch)".to_owned()
         } else {
-            truncate_preview(
-                &format!("[{} texts] {}", texts.len(), texts[0]),
-                200,
-            )
+            truncate_preview(&format!("[{} texts] {}", texts.len(), texts[0]), 200)
         };
         let input_tokens: usize = texts.iter().map(|t| estimate_tokens(t)).sum();
         let trace = ModelTrace {
@@ -275,7 +283,10 @@ impl ModelPool {
             success: result.is_ok(),
             error_message: result.as_ref().err().map(|e| format!("{e}")),
             output_preview: None,
-            output_dimension: result.as_ref().ok().and_then(|v| v.first().map(|f| f.len())),
+            output_dimension: result
+                .as_ref()
+                .ok()
+                .and_then(|v| v.first().map(std::vec::Vec::len)),
             output_tokens_estimate: None,
             latency_ms,
             retry_count: 0,
@@ -296,7 +307,10 @@ impl ModelPool {
         })?;
 
         let info = provider.info();
-        let model_id = self.model_id_for(ModelTask::Generation).unwrap_or("unknown").to_owned();
+        let model_id = self
+            .model_id_for(ModelTask::Generation)
+            .unwrap_or("unknown")
+            .to_owned();
         let start = Instant::now();
 
         let result = provider.generate(prompt, None).await;
@@ -340,7 +354,10 @@ impl ModelPool {
         })?;
 
         let info = provider.info();
-        let model_id = self.model_id_for(ModelTask::Generation).unwrap_or("unknown").to_owned();
+        let model_id = self
+            .model_id_for(ModelTask::Generation)
+            .unwrap_or("unknown")
+            .to_owned();
         let start = Instant::now();
 
         let result = provider.generate(prompt, Some(max_tokens)).await;
@@ -380,7 +397,10 @@ impl ModelPool {
         })?;
 
         let info = provider.info();
-        let model_id = self.model_id_for(ModelTask::Chat).unwrap_or("unknown").to_owned();
+        let model_id = self
+            .model_id_for(ModelTask::Chat)
+            .unwrap_or("unknown")
+            .to_owned();
         let start = Instant::now();
 
         let result = provider.generate(prompt, None).await;
@@ -412,15 +432,20 @@ impl ModelPool {
 
     /// Convenience: generate using the entity extraction model (with tracing).
     pub async fn extract(&self, prompt: &str) -> Result<String> {
-        let provider = self.provider_for(ModelTask::EntityExtraction).ok_or_else(|| {
-            UmmsError::Encoding(EncodingError::ApiCallFailed {
-                provider: "model_pool".into(),
-                reason: "No model configured for entity extraction task".into(),
-            })
-        })?;
+        let provider = self
+            .provider_for(ModelTask::EntityExtraction)
+            .ok_or_else(|| {
+                UmmsError::Encoding(EncodingError::ApiCallFailed {
+                    provider: "model_pool".into(),
+                    reason: "No model configured for entity extraction task".into(),
+                })
+            })?;
 
         let info = provider.info();
-        let model_id = self.model_id_for(ModelTask::EntityExtraction).unwrap_or("unknown").to_owned();
+        let model_id = self
+            .model_id_for(ModelTask::EntityExtraction)
+            .unwrap_or("unknown")
+            .to_owned();
         let start = Instant::now();
 
         let result = provider.generate(prompt, None).await;
@@ -455,12 +480,15 @@ impl ModelPool {
     /// Requires a multimodal-capable embedding model (e.g., gemini-embedding-002).
     /// Supported MIME types: image/png, image/jpeg, image/webp, image/gif.
     pub async fn embed_image(&self, image_base64: &str, mime_type: &str) -> Result<Vec<f32>> {
-        let provider = self.provider_for(ModelTask::Embedding).ok_or_else(|| {
-            UmmsError::Internal("No embedding provider available".into())
-        })?;
+        let provider = self
+            .provider_for(ModelTask::Embedding)
+            .ok_or_else(|| UmmsError::Internal("No embedding provider available".into()))?;
 
         let info = provider.info();
-        let model_id = self.model_id_for(ModelTask::Embedding).unwrap_or("unknown").to_owned();
+        let model_id = self
+            .model_id_for(ModelTask::Embedding)
+            .unwrap_or("unknown")
+            .to_owned();
         let start = Instant::now();
 
         let result = provider.embed_image(image_base64, mime_type).await;
@@ -479,7 +507,7 @@ impl ModelPool {
             success: result.is_ok(),
             error_message: result.as_ref().err().map(|e| format!("{e}")),
             output_preview: None,
-            output_dimension: result.as_ref().ok().map(|v| v.len()),
+            output_dimension: result.as_ref().ok().map(std::vec::Vec::len),
             output_tokens_estimate: None,
             latency_ms,
             retry_count: 0,
@@ -494,12 +522,15 @@ impl ModelPool {
     ///
     /// Supported MIME types: audio/wav, audio/mp3, audio/mpeg, audio/ogg, audio/flac.
     pub async fn transcribe(&self, audio_base64: &str, mime_type: &str) -> Result<String> {
-        let provider = self.provider_for(ModelTask::Generation).ok_or_else(|| {
-            UmmsError::Internal("No generation provider available".into())
-        })?;
+        let provider = self
+            .provider_for(ModelTask::Generation)
+            .ok_or_else(|| UmmsError::Internal("No generation provider available".into()))?;
 
         let info = provider.info();
-        let model_id = self.model_id_for(ModelTask::Generation).unwrap_or("unknown").to_owned();
+        let model_id = self
+            .model_id_for(ModelTask::Generation)
+            .unwrap_or("unknown")
+            .to_owned();
         let start = Instant::now();
 
         let result = provider.transcribe_audio(audio_base64, mime_type).await;
@@ -532,7 +563,11 @@ impl ModelPool {
     /// Embed audio: transcribe to text, then embed the text.
     ///
     /// Returns the transcription text and its embedding vector.
-    pub async fn embed_audio(&self, audio_base64: &str, mime_type: &str) -> Result<(String, Vec<f32>)> {
+    pub async fn embed_audio(
+        &self,
+        audio_base64: &str,
+        mime_type: &str,
+    ) -> Result<(String, Vec<f32>)> {
         let text = self.transcribe(audio_base64, mime_type).await?;
         let vector = self.embed(&text).await?;
         Ok((text, vector))
@@ -546,14 +581,12 @@ impl ModelPool {
 
     /// Get encoder stats from the embedding provider (for dashboard display).
     pub fn embedding_stats(&self) -> Option<&EncoderStats> {
-        self.provider_for(ModelTask::Embedding)
-            .map(|p| &p.stats)
+        self.provider_for(ModelTask::Embedding).map(|p| &p.stats)
     }
 
     /// Get encoder stats from the generation provider.
     pub fn generation_stats(&self) -> Option<&EncoderStats> {
-        self.provider_for(ModelTask::Generation)
-            .map(|p| &p.stats)
+        self.provider_for(ModelTask::Generation).map(|p| &p.stats)
     }
 }
 
@@ -575,7 +608,7 @@ impl Encoder for ModelPool {
         self.embedding_dimension().unwrap_or(3072)
     }
 
-    fn model_name(&self) -> &str {
+    fn model_name(&self) -> &'static str {
         "model-pool"
     }
 }

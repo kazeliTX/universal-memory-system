@@ -5,15 +5,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use chrono::Utc;
 use serde::Deserialize;
+use tracing::debug;
 
+use crate::AppState;
 use crate::prompt::engine::PromptEngine;
 use crate::prompt::types::*;
 use crate::response::*;
-use crate::AppState;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -72,31 +73,38 @@ pub async fn get_prompt_config(
         .await
         .map_err(|e| format!("Failed to get prompt config: {e}"))?;
 
-    let config = match config {
-        Some(c) => c,
-        None => {
-            // Generate default config from persona
-            let persona = state
-                .persona_store
-                .get(&agent_id.parse().map_err(|e| format!("Invalid agent_id: {e}"))?)
-                .await
-                .map_err(|e| format!("Persona lookup failed: {e}"))?;
+    let config = if let Some(c) = config {
+        debug!(agent_id = %agent_id, "loaded prompt config from store");
+        c
+    } else {
+        debug!(agent_id = %agent_id, "no stored prompt config, generating default");
+        // Generate default config from persona
+        let persona = state
+            .persona_store
+            .get(
+                &agent_id
+                    .parse()
+                    .map_err(|e| format!("Invalid agent_id: {e}"))?,
+            )
+            .await
+            .map_err(|e| format!("Persona lookup failed: {e}"))?;
 
-            let agent_name = persona.as_ref().map(|p| p.name.as_str()).unwrap_or(&agent_id);
-            let blocks = PromptEngine::default_blocks(agent_name);
+        let agent_name = persona
+            .as_ref()
+            .map_or(agent_id.as_str(), |p| p.name.as_str());
+        let blocks = PromptEngine::default_blocks(agent_name);
 
-            AgentPromptConfig {
-                agent_id: agent_id.clone(),
-                mode: PromptMode::default(),
-                original_prompt: persona
-                    .as_ref()
-                    .map(|p| p.system_prompt.clone())
-                    .unwrap_or_default(),
-                blocks,
-                preset_path: None,
-                preset_content: None,
-                updated_at: Utc::now(),
-            }
+        AgentPromptConfig {
+            agent_id: agent_id.clone(),
+            mode: PromptMode::default(),
+            original_prompt: persona
+                .as_ref()
+                .map(|p| p.system_prompt.clone())
+                .unwrap_or_default(),
+            blocks,
+            preset_path: None,
+            preset_content: None,
+            updated_at: Utc::now(),
         }
     };
 
@@ -195,9 +203,8 @@ pub async fn switch_mode(
     Path(agent_id): Path<String>,
     Json(body): Json<SwitchModeRequest>,
 ) -> Result<Json<AgentPromptConfigResponse>, String> {
-    let new_mode: PromptMode =
-        serde_json::from_value(serde_json::Value::String(body.mode.clone()))
-            .map_err(|_| format!("Invalid mode: {}", body.mode))?;
+    let new_mode: PromptMode = serde_json::from_value(serde_json::Value::String(body.mode.clone()))
+        .map_err(|_| format!("Invalid mode: {}", body.mode))?;
 
     let mut config = state
         .prompt_store
@@ -234,9 +241,8 @@ pub async fn add_block(
         .map_err(|e| format!("Failed to get prompt config: {e}"))?
         .ok_or_else(|| format!("No prompt config found for agent: {agent_id}"))?;
 
-    let bt: BlockType =
-        serde_json::from_value(serde_json::Value::String(body.block_type.clone()))
-            .unwrap_or(BlockType::Custom);
+    let bt: BlockType = serde_json::from_value(serde_json::Value::String(body.block_type.clone()))
+        .unwrap_or(BlockType::Custom);
 
     let block = PromptBlock {
         id: body.id.unwrap_or_else(new_block_id),
@@ -283,9 +289,8 @@ pub async fn update_block(
         .find(|b| b.id == block_id)
         .ok_or_else(|| format!("Block not found: {block_id}"))?;
 
-    let bt: BlockType =
-        serde_json::from_value(serde_json::Value::String(body.block_type.clone()))
-            .unwrap_or(BlockType::Custom);
+    let bt: BlockType = serde_json::from_value(serde_json::Value::String(body.block_type.clone()))
+        .unwrap_or(BlockType::Custom);
 
     block.name = body.name;
     block.block_type = bt;
@@ -616,8 +621,8 @@ pub async fn preview_prompt(
 
     let vars = body.test_vars.unwrap_or_default();
 
-    let resolved = PromptEngine::build_prompt(&config, &vars)
-        .map_err(|e| format!("Build failed: {e}"))?;
+    let resolved =
+        PromptEngine::build_prompt(&config, &vars).map_err(|e| format!("Build failed: {e}"))?;
 
     let mode_str = serde_json::to_value(&config.mode)
         .ok()
@@ -645,8 +650,8 @@ pub async fn list_presets(
     }
 
     let mut presets = Vec::new();
-    let entries = std::fs::read_dir(&presets_dir)
-        .map_err(|e| format!("Failed to read presets dir: {e}"))?;
+    let entries =
+        std::fs::read_dir(&presets_dir).map_err(|e| format!("Failed to read presets dir: {e}"))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {e}"))?;

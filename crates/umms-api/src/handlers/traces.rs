@@ -77,9 +77,7 @@ pub async fn list_traces(
 }
 
 /// `GET /api/traces/summary` — aggregated trace statistics.
-pub async fn trace_summary(
-    State(state): State<Arc<AppState>>,
-) -> Json<TraceSummaryResponse> {
+pub async fn trace_summary(State(state): State<Arc<AppState>>) -> Json<TraceSummaryResponse> {
     let summary = match &state.model_pool {
         Some(pool) => pool.trace_store.summary(),
         None => umms_model::TraceSummary {
@@ -121,9 +119,7 @@ pub async fn trace_summary(
 }
 
 /// `DELETE /api/traces` — clear the trace buffer.
-pub async fn clear_traces(
-    State(state): State<Arc<AppState>>,
-) -> Json<serde_json::Value> {
+pub async fn clear_traces(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     if let Some(pool) = &state.model_pool {
         pool.trace_store.clear();
     }

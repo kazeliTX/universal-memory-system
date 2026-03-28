@@ -106,9 +106,7 @@ impl RawFileStore for LocalFileStore {
         }
 
         let mut entries = Vec::new();
-        let mut reader = fs::read_dir(&agent_dir)
-            .await
-            .map_err(StorageError::Io)?;
+        let mut reader = fs::read_dir(&agent_dir).await.map_err(StorageError::Io)?;
 
         while let Some(entry) = reader.next_entry().await.map_err(StorageError::Io)? {
             if let Some(name) = entry.file_name().to_str() {

@@ -60,7 +60,10 @@ impl Default for GeminiConfig {
 struct EmbedContentRequest<'a> {
     model: &'a str,
     content: ContentPayload<'a>,
-    #[serde(rename = "outputDimensionality", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "outputDimensionality",
+        skip_serializing_if = "Option::is_none"
+    )]
     output_dimensionality: Option<usize>,
 }
 
@@ -120,6 +123,7 @@ pub struct GeminiEncoder {
     pub stats: EncoderStats,
 }
 
+#[allow(clippy::missing_fields_in_debug)] // intentionally hides api_key and client
 impl std::fmt::Debug for GeminiEncoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GeminiEncoder")
@@ -202,10 +206,9 @@ impl GeminiEncoder {
                         })?;
 
                         let elapsed = start.elapsed();
-                        self.stats.total_duration_us.fetch_add(
-                            elapsed.as_micros() as u64,
-                            Ordering::Relaxed,
-                        );
+                        self.stats
+                            .total_duration_us
+                            .fetch_add(elapsed.as_micros() as u64, Ordering::Relaxed);
 
                         debug!(
                             dim = parsed.embedding.values.len(),
@@ -220,13 +223,12 @@ impl GeminiEncoder {
                     let err_body = resp.text().await.unwrap_or_default();
 
                     // Parse error for better messages
-                    let reason = if let Ok(ge) =
-                        serde_json::from_str::<GeminiErrorResponse>(&err_body)
-                    {
-                        format!("{} ({})", ge.error.message, ge.error.status)
-                    } else {
-                        format!("HTTP {status}: {err_body}")
-                    };
+                    let reason =
+                        if let Ok(ge) = serde_json::from_str::<GeminiErrorResponse>(&err_body) {
+                            format!("{} ({})", ge.error.message, ge.error.status)
+                        } else {
+                            format!("HTTP {status}: {err_body}")
+                        };
 
                     // Don't retry 4xx (except 429 rate limit)
                     if status.as_u16() == 429 || status.is_server_error() {
@@ -246,7 +248,6 @@ impl GeminiEncoder {
                         continue;
                     }
                     last_err = Some(format!("Network error: {e}"));
-                    continue;
                 }
             }
         }
@@ -291,7 +292,11 @@ impl GeminiEncoder {
             if attempt > 0 {
                 self.stats.total_retries.fetch_add(1, Ordering::Relaxed);
                 let delay = std::time::Duration::from_millis(100 * 2u64.pow(attempt - 1));
-                warn!(attempt, delay_ms = delay.as_millis(), "Retrying batch Gemini API");
+                warn!(
+                    attempt,
+                    delay_ms = delay.as_millis(),
+                    "Retrying batch Gemini API"
+                );
                 tokio::time::sleep(delay).await;
             }
 
@@ -306,10 +311,9 @@ impl GeminiEncoder {
                         })?;
 
                         let elapsed = start.elapsed();
-                        self.stats.total_duration_us.fetch_add(
-                            elapsed.as_micros() as u64,
-                            Ordering::Relaxed,
-                        );
+                        self.stats
+                            .total_duration_us
+                            .fetch_add(elapsed.as_micros() as u64, Ordering::Relaxed);
 
                         debug!(
                             count = parsed.embeddings.len(),
@@ -317,22 +321,17 @@ impl GeminiEncoder {
                             "Batch embeddings generated"
                         );
 
-                        return Ok(parsed
-                            .embeddings
-                            .into_iter()
-                            .map(|e| e.values)
-                            .collect());
+                        return Ok(parsed.embeddings.into_iter().map(|e| e.values).collect());
                     }
 
                     let status = resp.status();
                     let err_body = resp.text().await.unwrap_or_default();
-                    let reason = if let Ok(ge) =
-                        serde_json::from_str::<GeminiErrorResponse>(&err_body)
-                    {
-                        format!("{} ({})", ge.error.message, ge.error.status)
-                    } else {
-                        format!("HTTP {status}: {err_body}")
-                    };
+                    let reason =
+                        if let Ok(ge) = serde_json::from_str::<GeminiErrorResponse>(&err_body) {
+                            format!("{} ({})", ge.error.message, ge.error.status)
+                        } else {
+                            format!("HTTP {status}: {err_body}")
+                        };
 
                     if status.as_u16() == 429 || status.is_server_error() {
                         last_err = Some(reason);
@@ -351,7 +350,6 @@ impl GeminiEncoder {
                     } else {
                         last_err = Some(format!("Network error: {e}"));
                     }
-                    continue;
                 }
             }
         }
@@ -372,7 +370,9 @@ impl GeminiEncoder {
 impl Encoder for GeminiEncoder {
     async fn encode_text(&self, text: &str) -> Result<Vec<f32>> {
         self.stats.total_requests.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_texts_encoded.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_texts_encoded
+            .fetch_add(1, Ordering::Relaxed);
 
         let vec = self.call_embed_single(text).await?;
 

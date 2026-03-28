@@ -21,7 +21,7 @@ pub async fn audit_events(
         .offset(params.offset.unwrap_or(0));
 
     if let Some(ref aid) = params.agent_id {
-        filter = filter.agent(aid.as_str());
+        filter = filter.agent_label(aid.as_str());
     }
     if let Some(ref et) = params.event_type {
         if let Some(parsed) = parse_event_type(et) {

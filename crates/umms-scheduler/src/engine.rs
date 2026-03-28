@@ -37,10 +37,7 @@ impl SchedulerEngine {
     /// Start the scheduler loop as a background tokio task.
     ///
     /// The loop runs until the `JoinHandle` is dropped/aborted.
-    pub fn start(
-        self: Arc<Self>,
-        executor: Arc<dyn TaskExecutor>,
-    ) -> tokio::task::JoinHandle<()> {
+    pub fn start(self: Arc<Self>, executor: Arc<dyn TaskExecutor>) -> tokio::task::JoinHandle<()> {
         let engine = Arc::clone(&self);
         tokio::spawn(async move {
             info!(

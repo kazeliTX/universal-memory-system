@@ -89,7 +89,13 @@ pub async fn promote(
     };
 
     store
-        .update_metadata(memory_id, None, new_tags, Some(IsolationScope::Shared), None)
+        .update_metadata(
+            memory_id,
+            None,
+            new_tags,
+            Some(IsolationScope::Shared),
+            None,
+        )
         .await?;
 
     info!(
@@ -156,8 +162,7 @@ pub fn meets_promotion_criteria(
     created_hours_ago: f64,
     criteria: &PromotionCriteria,
 ) -> bool {
-    importance >= criteria.min_importance
-        && created_hours_ago >= f64::from(criteria.min_age_hours)
+    importance >= criteria.min_importance && created_hours_ago >= f64::from(criteria.min_age_hours)
 }
 
 #[cfg(test)]

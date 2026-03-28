@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use tokio::sync::Mutex;
 
 use umms_core::error::{StorageError, UmmsError};
@@ -28,11 +28,9 @@ impl SqliteAgentContextManager {
     ///
     /// Pass `":memory:"` for an in-memory database (useful for tests).
     pub fn new(path: impl AsRef<Path>) -> Result<Self, UmmsError> {
-        let conn = Connection::open(path.as_ref()).map_err(|e| {
-            StorageError::ConnectionFailed {
-                backend: "sqlite-agent-context".into(),
-                reason: e.to_string(),
-            }
+        let conn = Connection::open(path.as_ref()).map_err(|e| StorageError::ConnectionFailed {
+            backend: "sqlite-agent-context".into(),
+            reason: e.to_string(),
         })?;
 
         Self::run_migrations(&conn)?;
@@ -108,9 +106,7 @@ impl AgentContextManager for SqliteAgentContextManager {
                  VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![agent_id_str, l0_json, l1_json, state_json, snapshot_at],
             )
-            .map_err(|e| {
-                UmmsError::Storage(StorageError::Sqlite(e.to_string()))
-            })?;
+            .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
             Ok::<(), UmmsError>(())
         })
         .await
@@ -123,15 +119,12 @@ impl AgentContextManager for SqliteAgentContextManager {
         Ok(())
     }
 
-    async fn load_snapshot(
-        &self,
-        agent_id: &AgentId,
-    ) -> Result<Option<AgentSnapshot>, UmmsError> {
+    async fn load_snapshot(&self, agent_id: &AgentId) -> Result<Option<AgentSnapshot>, UmmsError> {
         let agent_id_owned = agent_id.clone();
         let agent_id_str = agent_id.as_str().to_owned();
         let conn = Arc::clone(&self.conn);
 
-        let result = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             let conn = conn.blocking_lock();
             let mut stmt = conn
                 .prepare(
@@ -167,22 +160,20 @@ impl AgentContextManager for SqliteAgentContextManager {
                             reason: format!("failed to deserialise L1 entries: {e}"),
                         })
                     })?;
-                    let state_json_val =
-                        serde_json::from_str(&state_json).map_err(|e| {
+                    let state_json_val = serde_json::from_str(&state_json).map_err(|e| {
+                        UmmsError::Storage(StorageError::SnapshotFailed {
+                            agent_id: agent_id_owned.clone(),
+                            reason: format!("failed to deserialise state_json: {e}"),
+                        })
+                    })?;
+                    let snapshot_at_dt = chrono::DateTime::parse_from_rfc3339(&snapshot_at)
+                        .map_err(|e| {
                             UmmsError::Storage(StorageError::SnapshotFailed {
                                 agent_id: agent_id_owned.clone(),
-                                reason: format!("failed to deserialise state_json: {e}"),
+                                reason: format!("failed to parse snapshot_at: {e}"),
                             })
-                        })?;
-                    let snapshot_at_dt =
-                        chrono::DateTime::parse_from_rfc3339(&snapshot_at)
-                            .map_err(|e| {
-                                UmmsError::Storage(StorageError::SnapshotFailed {
-                                    agent_id: agent_id_owned.clone(),
-                                    reason: format!("failed to parse snapshot_at: {e}"),
-                                })
-                            })?
-                            .with_timezone(&chrono::Utc);
+                        })?
+                        .with_timezone(&chrono::Utc);
 
                     Ok(Some(AgentSnapshot {
                         agent_id: agent_id_owned,
@@ -195,9 +186,7 @@ impl AgentContextManager for SqliteAgentContextManager {
             }
         })
         .await
-        .map_err(|e| UmmsError::Internal(format!("spawn_blocking join error: {e}")))?;
-
-        result
+        .map_err(|e| UmmsError::Internal(format!("spawn_blocking join error: {e}")))?
     }
 
     /// Full agent switch is delegated to [`AgentSwitcher`](super::AgentSwitcher)

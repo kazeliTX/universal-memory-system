@@ -7,9 +7,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 
-use crate::task::{
-    ExecutionStatus, Schedule, ScheduledTask, TaskExecution, TaskType,
-};
+use crate::task::{ExecutionStatus, Schedule, ScheduledTask, TaskExecution, TaskType};
 
 /// Persistent task store backed by SQLite.
 pub struct TaskStore {
@@ -75,7 +73,7 @@ impl TaskStore {
                     task.description,
                     task.task_type.to_string(),
                     task.schedule.to_string(),
-                    task.enabled as i32,
+                    i32::from(task.enabled),
                     task.params.to_string(),
                     task.created_at.to_rfc3339(),
                     task.updated_at.to_rfc3339(),
@@ -339,17 +337,13 @@ fn row_to_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScheduledTask> {
         task_type: task_type_str
             .parse()
             .unwrap_or(TaskType::Custom(task_type_str)),
-        schedule: schedule_str
-            .parse()
-            .unwrap_or(Schedule::Manual),
+        schedule: schedule_str.parse().unwrap_or(Schedule::Manual),
         enabled: enabled_int != 0,
         params: serde_json::from_str(&params_str).unwrap_or_default(),
         created_at: DateTime::parse_from_rfc3339(&created_str)
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now()),
+            .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc)),
         updated_at: DateTime::parse_from_rfc3339(&updated_str)
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now()),
+            .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc)),
         last_run_at: last_run_str.and_then(|s| {
             DateTime::parse_from_rfc3339(&s)
                 .map(|dt| dt.with_timezone(&Utc))
@@ -374,16 +368,13 @@ fn row_to_execution(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskExecution> 
         id: row.get(0)?,
         task_id: row.get(1)?,
         started_at: DateTime::parse_from_rfc3339(&started_str)
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now()),
+            .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc)),
         finished_at: finished_str.and_then(|s| {
             DateTime::parse_from_rfc3339(&s)
                 .map(|dt| dt.with_timezone(&Utc))
                 .ok()
         }),
-        status: status_str
-            .parse()
-            .unwrap_or(ExecutionStatus::Failed),
+        status: status_str.parse().unwrap_or(ExecutionStatus::Failed),
         result: serde_json::from_str(&result_str).unwrap_or_default(),
     })
 }

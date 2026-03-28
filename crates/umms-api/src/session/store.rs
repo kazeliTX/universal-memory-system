@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use tokio::sync::Mutex;
 
 use umms_core::error::{StorageError, UmmsError};
@@ -25,11 +25,9 @@ impl SessionStore {
     ///
     /// Pass `":memory:"` for an in-memory database (useful for tests).
     pub fn new(path: impl AsRef<Path>) -> Result<Self, UmmsError> {
-        let conn = Connection::open(path.as_ref()).map_err(|e| {
-            StorageError::ConnectionFailed {
-                backend: "sqlite-session".into(),
-                reason: e.to_string(),
-            }
+        let conn = Connection::open(path.as_ref()).map_err(|e| StorageError::ConnectionFailed {
+            backend: "sqlite-session".into(),
+            reason: e.to_string(),
         })?;
 
         // Enable WAL mode for concurrent access
@@ -80,7 +78,15 @@ impl SessionStore {
                 "INSERT OR REPLACE INTO sessions
                      (id, agent_id, title, messages, metadata, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![id, agent_id, title, messages_json, metadata_json, created_at, updated_at],
+                params![
+                    id,
+                    agent_id,
+                    title,
+                    messages_json,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                ],
             )
             .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
             Ok::<(), UmmsError>(())
@@ -123,9 +129,23 @@ impl SessionStore {
 
             match row {
                 None => Ok(None),
-                Some((id, agent_id, title, messages_json, metadata_json, created_str, updated_str)) => {
+                Some((
+                    id,
+                    agent_id,
+                    title,
+                    messages_json,
+                    metadata_json,
+                    created_str,
+                    updated_str,
+                )) => {
                     let session = parse_session_row(
-                        id, agent_id, title, messages_json, metadata_json, created_str, updated_str,
+                        id,
+                        agent_id,
+                        title,
+                        messages_json,
+                        metadata_json,
+                        created_str,
+                        updated_str,
                     )?;
                     Ok(Some(session))
                 }
@@ -141,7 +161,7 @@ impl SessionStore {
         &self,
         agent_id: Option<&str>,
     ) -> Result<Vec<ChatSessionSummary>, UmmsError> {
-        let agent_id = agent_id.map(|s| s.to_owned());
+        let agent_id = agent_id.map(ToOwned::to_owned);
         let conn = Arc::clone(&self.conn);
 
         tokio::task::spawn_blocking(move || {
@@ -151,12 +171,14 @@ impl SessionStore {
                 Some(ref aid) => (
                     "SELECT id, agent_id, title, messages, created_at, updated_at
                      FROM sessions WHERE agent_id = ?1
-                     ORDER BY updated_at DESC".to_owned(),
+                     ORDER BY updated_at DESC"
+                        .to_owned(),
                     Some(aid.clone()),
                 ),
                 None => (
                     "SELECT id, agent_id, title, messages, created_at, updated_at
-                     FROM sessions ORDER BY updated_at DESC".to_owned(),
+                     FROM sessions ORDER BY updated_at DESC"
+                        .to_owned(),
                     None,
                 ),
             };
@@ -165,40 +187,41 @@ impl SessionStore {
                 .prepare(&sql)
                 .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
 
-            let rows: Vec<(String, String, String, String, String, String)> = if let Some(ref p) = param {
-                stmt.query_map(params![p], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, String>(5)?,
-                    ))
-                })
-                .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
-            } else {
-                stmt.query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, String>(5)?,
-                    ))
-                })
-                .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
-            };
+            let rows: Vec<(String, String, String, String, String, String)> =
+                if let Some(ref p) = param {
+                    stmt.query_map(params![p], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, String>(5)?,
+                        ))
+                    })
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
+                } else {
+                    stmt.query_map([], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, String>(5)?,
+                        ))
+                    })
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
+                };
 
             let mut summaries = Vec::new();
             for (id, agent_id, title, messages_json, created_str, updated_str) in rows {
-                let messages: Vec<ChatMessage> = serde_json::from_str(&messages_json)
-                    .unwrap_or_default();
+                let messages: Vec<ChatMessage> =
+                    serde_json::from_str(&messages_json).unwrap_or_default();
 
                 let last_message_preview = messages
                     .last()
@@ -209,11 +232,9 @@ impl SessionStore {
                     .unwrap_or_default();
 
                 let created_at = DateTime::parse_from_rfc3339(&created_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
+                    .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc));
                 let updated_at = DateTime::parse_from_rfc3339(&updated_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
+                    .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc));
 
                 summaries.push(ChatSessionSummary {
                     id,
@@ -269,7 +290,9 @@ impl SessionStore {
                 .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
 
             if rows == 0 {
-                return Err(UmmsError::Internal(format!("session not found: {id_for_block}")));
+                return Err(UmmsError::Internal(format!(
+                    "session not found: {id_for_block}"
+                )));
             }
             Ok::<(), UmmsError>(())
         })
@@ -282,6 +305,7 @@ impl SessionStore {
 }
 
 /// Parse a raw row tuple into a `ChatSession`.
+#[allow(clippy::needless_pass_by_value)]
 fn parse_session_row(
     id: String,
     agent_id: String,

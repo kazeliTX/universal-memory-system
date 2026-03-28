@@ -61,9 +61,7 @@ impl CompositeTagStore {
                 .vector
                 .iter()
                 .zip(incoming.vector.iter())
-                .map(|(old, new)| {
-                    (old * existing.frequency as f32 + new) / new_freq as f32
-                })
+                .map(|(old, new)| (old * existing.frequency as f32 + new) / new_freq as f32)
                 .collect()
         } else {
             incoming.vector.clone()
@@ -137,11 +135,7 @@ impl TagStore for CompositeTagStore {
     }
 
     #[instrument(skip(self), fields(tag_id = %tag_id, limit))]
-    async fn cooccurrences(
-        &self,
-        tag_id: &TagId,
-        limit: usize,
-    ) -> Result<Vec<TagCooccurrence>> {
+    async fn cooccurrences(&self, tag_id: &TagId, limit: usize) -> Result<Vec<TagCooccurrence>> {
         self.cooc.cooccurrences(tag_id, limit).await
     }
 
@@ -296,7 +290,10 @@ mod tests {
         store.upsert_batch(&tags).await.unwrap();
 
         let agent_id = AgentId::from_str("agent-a").unwrap();
-        let found = store.find_by_label("rust", Some(&agent_id), 10).await.unwrap();
+        let found = store
+            .find_by_label("rust", Some(&agent_id), 10)
+            .await
+            .unwrap();
         assert_eq!(found.len(), 2);
     }
 

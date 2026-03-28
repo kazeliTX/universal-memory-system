@@ -1,4 +1,3 @@
-
 //! # umms-api
 //!
 //! HTTP API layer for the Universal Multimodal Memory System.
@@ -16,8 +15,9 @@
 //!
 //! - Handlers are stateless functions that receive `Arc<AppState>` via Axum extractors.
 //! - Response types in [`response`] are shared with Tauri Commands (same JSON shape).
-//! - [`ApiError`](handlers::memory::ApiError) converts to proper HTTP status codes.
+//! - [`ApiError`](error::ApiError) converts to proper HTTP status codes.
 
+pub mod error;
 pub mod handlers;
 pub mod prompt;
 pub mod response;
@@ -27,8 +27,8 @@ pub mod state;
 
 use std::sync::Arc;
 
-use axum::routing::{delete, get, post, put};
 use axum::Router;
+use axum::routing::{delete, get, post, put};
 use tower_http::cors::CorsLayer;
 
 pub use state::{AppConfig, AppState};
@@ -38,6 +38,7 @@ pub use state::{AppConfig, AppState};
 /// The returned router is ready to be served with `axum::serve()`.
 /// It does not include static file serving — that is the caller's responsibility
 /// (Tauri serves the Vue build, tests don't need it).
+#[allow(clippy::too_many_lines)]
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         // System

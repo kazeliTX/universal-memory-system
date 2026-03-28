@@ -61,7 +61,6 @@ fn dv_to_opt_string(dv: &DataValue) -> Option<String> {
     match dv {
         DataValue::Str(s) if s.is_empty() => None,
         DataValue::Str(s) => Some(s.to_string()),
-        DataValue::Null => None,
         _ => None,
     }
 }
@@ -84,7 +83,6 @@ fn node_type_to_str(t: KgNodeType) -> &'static str {
 
 fn str_to_node_type(s: &str) -> KgNodeType {
     match s {
-        "entity" => KgNodeType::Entity,
         "concept" => KgNodeType::Concept,
         "relation" => KgNodeType::Relation,
         _ => KgNodeType::Entity,
@@ -95,8 +93,15 @@ fn row_to_node(row: &[DataValue]) -> Option<KgNode> {
     if row.len() < 8 {
         return None;
     }
+    let id = match NodeId::from_str(&dv_to_string(&row[0])) {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::warn!(error = %e, raw = %dv_to_string(&row[0]), "skipping node with unparseable id");
+            return None;
+        }
+    };
     Some(KgNode {
-        id: NodeId::from_str(&dv_to_string(&row[0])).unwrap_or_else(|_| NodeId::new()),
+        id,
         agent_id: dv_to_opt_string(&row[1]).and_then(|s| AgentId::from_str(&s).ok()),
         node_type: str_to_node_type(&dv_to_string(&row[2])),
         label: dv_to_string(&row[3]),
@@ -118,10 +123,31 @@ fn row_to_edge(row: &[DataValue]) -> Option<KgEdge> {
     if row.len() < 7 {
         return None;
     }
+    let id = match EdgeId::from_str(&dv_to_string(&row[0])) {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::warn!(error = %e, raw = %dv_to_string(&row[0]), "skipping edge with unparseable id");
+            return None;
+        }
+    };
+    let source_id = match NodeId::from_str(&dv_to_string(&row[1])) {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::warn!(error = %e, "skipping edge with unparseable source_id");
+            return None;
+        }
+    };
+    let target_id = match NodeId::from_str(&dv_to_string(&row[2])) {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::warn!(error = %e, "skipping edge with unparseable target_id");
+            return None;
+        }
+    };
     Some(KgEdge {
-        id: EdgeId::from_str(&dv_to_string(&row[0])).unwrap_or_else(|_| EdgeId::new()),
-        source_id: NodeId::from_str(&dv_to_string(&row[1])).unwrap_or_else(|_| NodeId::new()),
-        target_id: NodeId::from_str(&dv_to_string(&row[2])).unwrap_or_else(|_| NodeId::new()),
+        id,
+        source_id,
+        target_id,
         relation: dv_to_string(&row[3]),
         weight: dv_to_f32(&row[4]),
         agent_id: dv_to_opt_string(&row[5]).and_then(|s| AgentId::from_str(&s).ok()),
@@ -157,18 +183,14 @@ impl CozoGraphStore {
         } else {
             // Ensure parent directory exists.
             if let Some(parent) = path.as_ref().parent() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    StorageError::ConnectionFailed {
-                        backend: "cozo-graph".into(),
-                        reason: format!("cannot create directory: {e}"),
-                    }
+                std::fs::create_dir_all(parent).map_err(|e| StorageError::ConnectionFailed {
+                    backend: "cozo-graph".into(),
+                    reason: format!("cannot create directory: {e}"),
                 })?;
             }
-            DbInstance::new("sled", path_str, "").map_err(|e| {
-                StorageError::ConnectionFailed {
-                    backend: "cozo-graph".into(),
-                    reason: e.to_string(),
-                }
+            DbInstance::new("sled", path_str, "").map_err(|e| StorageError::ConnectionFailed {
+                backend: "cozo-graph".into(),
+                reason: e.to_string(),
             })?
         };
 
@@ -179,8 +201,9 @@ impl CozoGraphStore {
 
     /// Create relations (tables) if they don't already exist.
     fn ensure_relations(&self) -> std::result::Result<(), UmmsError> {
-        // :create will error if the relation already exists — that's fine.
-        let _ = self.db.run_script(
+        // :create will error if the relation already exists — that's expected
+        // for idempotent init. Log for diagnostics (P2-2).
+        if let Err(e) = self.db.run_script(
             r"
             :create nodes {
                 id: String
@@ -194,11 +217,13 @@ impl CozoGraphStore {
                 updated_at: String
             }
             ",
-            Default::default(),
+            BTreeMap::default(),
             ScriptMutability::Mutable,
-        );
+        ) {
+            tracing::debug!(error = %e, "nodes relation already exists or create failed");
+        }
 
-        let _ = self.db.run_script(
+        if let Err(e) = self.db.run_script(
             r"
             :create edges {
                 id: String
@@ -211,21 +236,38 @@ impl CozoGraphStore {
                 created_at: String
             }
             ",
-            Default::default(),
+            BTreeMap::default(),
             ScriptMutability::Mutable,
-        );
+        ) {
+            tracing::debug!(error = %e, "edges relation already exists or create failed");
+        }
 
         // Verify relations exist by querying them
-        self.db.run_script(
-            r"?[count(id)] := *nodes{id}",
-            Default::default(),
-            ScriptMutability::Immutable,
-        ).map_err(|e| {
-            UmmsError::Storage(StorageError::ConnectionFailed {
-                backend: "cozo-graph".into(),
-                reason: format!("nodes relation not available: {e}"),
-            })
-        })?;
+        self.db
+            .run_script(
+                r"?[count(id)] := *nodes{id}",
+                BTreeMap::default(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                UmmsError::Storage(StorageError::ConnectionFailed {
+                    backend: "cozo-graph".into(),
+                    reason: format!("nodes relation not available: {e}"),
+                })
+            })?;
+
+        self.db
+            .run_script(
+                r"?[count(id)] := *edges{id}",
+                BTreeMap::default(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                UmmsError::Storage(StorageError::ConnectionFailed {
+                    backend: "cozo-graph".into(),
+                    reason: format!("edges relation not available: {e}"),
+                })
+            })?;
 
         Ok(())
     }
@@ -294,7 +336,10 @@ impl KnowledgeGraphStore for CozoGraphStore {
                 ("relation", DataValue::Str(edge.relation.clone().into())),
                 ("weight", DataValue::from(f64::from(edge.weight))),
                 ("agent_id", DataValue::Str(agent_id_str.into())),
-                ("created_at", DataValue::Str(edge.created_at.to_rfc3339().into())),
+                (
+                    "created_at",
+                    DataValue::Str(edge.created_at.to_rfc3339().into()),
+                ),
             ]);
 
             db.run_script(
@@ -435,9 +480,7 @@ impl KnowledgeGraphStore for CozoGraphStore {
                 .ok_or_else(|| cozo_err(format!("node {id} not found for update")))?;
 
             let new_label = label.unwrap_or_else(|| dv_to_string(&row[3]));
-            let new_props = properties
-                .map(|p| serde_json::to_string(&p).unwrap_or_else(|_| "{}".to_owned()))
-                .unwrap_or_else(|| dv_to_string(&row[4]));
+            let new_props = properties.map_or_else(|| dv_to_string(&row[4]), |p| serde_json::to_string(&p).unwrap_or_else(|_| "{}".to_owned()));
             let new_importance = importance.unwrap_or_else(|| dv_to_f32(&row[5]));
             let now = Utc::now().to_rfc3339();
 
@@ -480,39 +523,36 @@ impl KnowledgeGraphStore for CozoGraphStore {
         let db = Arc::clone(&self.db);
 
         tokio::task::spawn_blocking(move || {
-            let (script, params) = match &agent_id {
-                Some(aid) => {
-                    let p = to_params(&[
-                        ("query", DataValue::Str(query.into())),
-                        ("agent_id", DataValue::Str(aid.as_str().into())),
-                        ("limit", DataValue::from(limit as i64)),
-                    ]);
-                    (
-                        r#"
-                        ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
-                            *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
-                            (agent_id = $agent_id or agent_id = ""),
-                            str_includes(label, $query)
-                        :limit $limit
-                        "#,
-                        p,
-                    )
-                }
-                None => {
-                    let p = to_params(&[
-                        ("query", DataValue::Str(query.into())),
-                        ("limit", DataValue::from(limit as i64)),
-                    ]);
-                    (
-                        r#"
-                        ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
-                            *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
-                            str_includes(label, $query)
-                        :limit $limit
-                        "#,
-                        p,
-                    )
-                }
+            let (script, params) = if let Some(aid) = &agent_id {
+                let p = to_params(&[
+                    ("query", DataValue::Str(query.into())),
+                    ("agent_id", DataValue::Str(aid.as_str().into())),
+                    ("limit", DataValue::from(limit as i64)),
+                ]);
+                (
+                    r#"
+                    ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
+                        *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
+                        (agent_id = $agent_id or agent_id = ""),
+                        str_includes(label, $query)
+                    :limit $limit
+                    "#,
+                    p,
+                )
+            } else {
+                let p = to_params(&[
+                    ("query", DataValue::Str(query.into())),
+                    ("limit", DataValue::from(limit as i64)),
+                ]);
+                (
+                    r"
+                    ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
+                        *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
+                        str_includes(label, $query)
+                    :limit $limit
+                    ",
+                    p,
+                )
             };
 
             let result = db
@@ -525,6 +565,7 @@ impl KnowledgeGraphStore for CozoGraphStore {
         .map_err(join_err)?
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn traverse(
         &self,
         start: &NodeId,
@@ -536,85 +577,82 @@ impl KnowledgeGraphStore for CozoGraphStore {
         let db = Arc::clone(&self.db);
 
         tokio::task::spawn_blocking(move || {
-            let max_hops_i64 = max_hops as i64;
+            let _max_hops_i64 = max_hops as i64;
 
             // Gather reachable node IDs via recursive Datalog.
-            let (node_script, node_params) = match &agent_id {
-                Some(aid) => {
-                    let p = to_params(&[
-                        ("start_id", DataValue::Str(start.as_str().into())),
-                        ("agent_id", DataValue::Str(aid.as_str().into())),
-                    ]);
-                    let script = match max_hops {
-                        0 => r#"
-                            ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
-                                *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
-                                id = $start_id,
-                                (agent_id = $agent_id or agent_id = "")
-                        "#,
-                        1 => r#"
-                            n1[to] := *edges{source_id: $start_id, target_id: to, agent_id: ea}, (ea = $agent_id or ea = "")
-                            n1[to] := *edges{source_id: to, target_id: $start_id, agent_id: ea}, (ea = $agent_id or ea = "")
-                            reachable[id] := id = $start_id
-                            reachable[id] := n1[id]
-                            ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
-                                reachable[id],
-                                *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
-                                (agent_id = $agent_id or agent_id = "")
-                        "#,
-                        _ => r#"
-                            n1[to] := *edges{source_id: $start_id, target_id: to, agent_id: ea}, (ea = $agent_id or ea = "")
-                            n1[to] := *edges{source_id: to, target_id: $start_id, agent_id: ea}, (ea = $agent_id or ea = "")
-                            n2[to] := n1[from], *edges{source_id: from, target_id: to, agent_id: ea}, (ea = $agent_id or ea = "")
-                            n2[to] := n1[from], *edges{source_id: to, target_id: from, agent_id: ea}, (ea = $agent_id or ea = "")
-                            reachable[id] := id = $start_id
-                            reachable[id] := n1[id]
-                            reachable[id] := n2[id]
-                            ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
-                                reachable[id],
-                                *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
-                                (agent_id = $agent_id or agent_id = "")
-                        "#,
-                    };
-                    (script, p)
-                }
-                None => {
-                    let p = to_params(&[
-                        ("start_id", DataValue::Str(start.as_str().into())),
-                    ]);
-                    // Unrolled BFS — expand up to max_hops levels explicitly.
-                    // CozoDB's Datalog has issues with arithmetic in recursive heads,
-                    // so we unroll the recursion for common hop counts (1-3).
-                    let script = match max_hops {
-                        0 => r"
-                            ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
-                                *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
-                                id = $start_id
-                        ",
-                        1 => r"
-                            n1[to] := *edges{source_id: $start_id, target_id: to}
-                            n1[to] := *edges{source_id: to, target_id: $start_id}
-                            reachable[id] := id = $start_id
-                            reachable[id] := n1[id]
-                            ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
-                                reachable[id],
-                                *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at}
-                        ",
-                        _ => r"
-                            n1[to] := *edges{source_id: $start_id, target_id: to}
-                            n1[to] := *edges{source_id: to, target_id: $start_id}
-                            n2[to] := n1[from], *edges{source_id: from, target_id: to}
-                            n2[to] := n1[from], *edges{source_id: to, target_id: from}
-                            reachable[id] := id = $start_id
-                            reachable[id] := n1[id]
-                            reachable[id] := n2[id]
-                            ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
-                                reachable[id],
-                                *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at}
-                        ",
-                    };
-                    (script, p)
-                }
+            let (node_script, node_params) = if let Some(aid) = &agent_id {
+                let p = to_params(&[
+                    ("start_id", DataValue::Str(start.as_str().into())),
+                    ("agent_id", DataValue::Str(aid.as_str().into())),
+                ]);
+                let script = match max_hops {
+                    0 => r#"
+                        ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
+                            *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
+                            id = $start_id,
+                            (agent_id = $agent_id or agent_id = "")
+                    "#,
+                    1 => r#"
+                        n1[to] := *edges{source_id: $start_id, target_id: to, agent_id: ea}, (ea = $agent_id or ea = "")
+                        n1[to] := *edges{source_id: to, target_id: $start_id, agent_id: ea}, (ea = $agent_id or ea = "")
+                        reachable[id] := id = $start_id
+                        reachable[id] := n1[id]
+                        ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
+                            reachable[id],
+                            *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
+                            (agent_id = $agent_id or agent_id = "")
+                    "#,
+                    _ => r#"
+                        n1[to] := *edges{source_id: $start_id, target_id: to, agent_id: ea}, (ea = $agent_id or ea = "")
+                        n1[to] := *edges{source_id: to, target_id: $start_id, agent_id: ea}, (ea = $agent_id or ea = "")
+                        n2[to] := n1[from], *edges{source_id: from, target_id: to, agent_id: ea}, (ea = $agent_id or ea = "")
+                        n2[to] := n1[from], *edges{source_id: to, target_id: from, agent_id: ea}, (ea = $agent_id or ea = "")
+                        reachable[id] := id = $start_id
+                        reachable[id] := n1[id]
+                        reachable[id] := n2[id]
+                        ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
+                            reachable[id],
+                            *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
+                            (agent_id = $agent_id or agent_id = "")
+                    "#,
+                };
+                (script, p)
+            } else {
+                let p = to_params(&[
+                    ("start_id", DataValue::Str(start.as_str().into())),
+                ]);
+                // Unrolled BFS — expand up to max_hops levels explicitly.
+                // CozoDB's Datalog has issues with arithmetic in recursive heads,
+                // so we unroll the recursion for common hop counts (1-3).
+                let script = match max_hops {
+                    0 => r"
+                        ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
+                            *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
+                            id = $start_id
+                    ",
+                    1 => r"
+                        n1[to] := *edges{source_id: $start_id, target_id: to}
+                        n1[to] := *edges{source_id: to, target_id: $start_id}
+                        reachable[id] := id = $start_id
+                        reachable[id] := n1[id]
+                        ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
+                            reachable[id],
+                            *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at}
+                    ",
+                    _ => r"
+                        n1[to] := *edges{source_id: $start_id, target_id: to}
+                        n1[to] := *edges{source_id: to, target_id: $start_id}
+                        n2[to] := n1[from], *edges{source_id: from, target_id: to}
+                        n2[to] := n1[from], *edges{source_id: to, target_id: from}
+                        reachable[id] := id = $start_id
+                        reachable[id] := n1[id]
+                        reachable[id] := n2[id]
+                        ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
+                            reachable[id],
+                            *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at}
+                    ",
+                };
+                (script, p)
             };
 
             let node_result = db
@@ -687,7 +725,11 @@ impl KnowledgeGraphStore for CozoGraphStore {
                 )
                 .map_err(cozo_err)?;
 
-            Ok(result.rows.iter().filter_map(|row| row_to_edge(row)).collect())
+            Ok(result
+                .rows
+                .iter()
+                .filter_map(|row| row_to_edge(row))
+                .collect())
         })
         .await
         .map_err(join_err)?
@@ -728,6 +770,7 @@ impl KnowledgeGraphStore for CozoGraphStore {
         .map_err(join_err)?
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn merge_nodes(
         &self,
         surviving: &NodeId,
@@ -822,10 +865,10 @@ impl KnowledgeGraphStore for CozoGraphStore {
                 let relation = dv_to_string(&row[3]);
 
                 if source == abs_id {
-                    source = surv_id.clone();
+                    source.clone_from(&surv_id);
                 }
                 if target == abs_id {
-                    target = surv_id.clone();
+                    target.clone_from(&surv_id);
                 }
 
                 // Skip self-loops.
@@ -985,28 +1028,25 @@ impl KnowledgeGraphStore for CozoGraphStore {
         let db = Arc::clone(&self.db);
 
         tokio::task::spawn_blocking(move || {
-            let (script, params) = match &agent_id {
-                Some(aid) => {
-                    let p = to_params(&[("agent_id", DataValue::Str(aid.as_str().into()))]);
-                    (
-                        r#"
-                        ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
-                            *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
-                            (agent_id = $agent_id or agent_id = "")
-                        "#,
-                        p,
-                    )
-                }
-                None => {
-                    let p: BTreeMap<String, DataValue> = BTreeMap::new();
-                    (
-                        r"
-                        ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
-                            *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at}
-                        ",
-                        p,
-                    )
-                }
+            let (script, params) = if let Some(aid) = &agent_id {
+                let p = to_params(&[("agent_id", DataValue::Str(aid.as_str().into()))]);
+                (
+                    r#"
+                    ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
+                        *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at},
+                        (agent_id = $agent_id or agent_id = "")
+                    "#,
+                    p,
+                )
+            } else {
+                let p: BTreeMap<String, DataValue> = BTreeMap::new();
+                (
+                    r"
+                    ?[id, agent_id, node_type, label, properties, importance, created_at, updated_at] :=
+                        *nodes{id, agent_id, node_type, label, properties, importance, created_at, updated_at}
+                    ",
+                    p,
+                )
             };
 
             let result = db
@@ -1075,50 +1115,44 @@ impl KnowledgeGraphStore for CozoGraphStore {
 
             let empty = BTreeMap::new();
 
-            let (node_count, shared_node_count) = match &agent_id {
-                Some(aid) => {
-                    let p = to_params(&[("agent_id", DataValue::Str(aid.as_str().into()))]);
-                    let nc = count_query(
-                        r#"?[count(id)] := *nodes{id, agent_id}, (agent_id = $agent_id or agent_id = "")"#,
-                        p,
-                    )?;
-                    let snc = count_query(
-                        r#"?[count(id)] := *nodes{id, agent_id}, agent_id = """#,
-                        empty.clone(),
-                    )?;
-                    (nc, snc)
-                }
-                None => {
-                    let nc = count_query(r"?[count(id)] := *nodes{id}", empty.clone())?;
-                    let snc = count_query(
-                        r#"?[count(id)] := *nodes{id, agent_id}, agent_id = """#,
-                        empty.clone(),
-                    )?;
-                    (nc, snc)
-                }
+            let (node_count, shared_node_count) = if let Some(aid) = &agent_id {
+                let p = to_params(&[("agent_id", DataValue::Str(aid.as_str().into()))]);
+                let nc = count_query(
+                    r#"?[count(id)] := *nodes{id, agent_id}, (agent_id = $agent_id or agent_id = "")"#,
+                    p,
+                )?;
+                let snc = count_query(
+                    r#"?[count(id)] := *nodes{id, agent_id}, agent_id = """#,
+                    empty.clone(),
+                )?;
+                (nc, snc)
+            } else {
+                let nc = count_query(r"?[count(id)] := *nodes{id}", empty.clone())?;
+                let snc = count_query(
+                    r#"?[count(id)] := *nodes{id, agent_id}, agent_id = """#,
+                    empty.clone(),
+                )?;
+                (nc, snc)
             };
 
-            let (edge_count, shared_edge_count) = match &agent_id {
-                Some(aid) => {
-                    let p = to_params(&[("agent_id", DataValue::Str(aid.as_str().into()))]);
-                    let ec = count_query(
-                        r#"?[count(id)] := *edges{id, agent_id}, (agent_id = $agent_id or agent_id = "")"#,
-                        p,
-                    )?;
-                    let sec = count_query(
-                        r#"?[count(id)] := *edges{id, agent_id}, agent_id = """#,
-                        empty,
-                    )?;
-                    (ec, sec)
-                }
-                None => {
-                    let ec = count_query(r"?[count(id)] := *edges{id}", empty.clone())?;
-                    let sec = count_query(
-                        r#"?[count(id)] := *edges{id, agent_id}, agent_id = """#,
-                        empty,
-                    )?;
-                    (ec, sec)
-                }
+            let (edge_count, shared_edge_count) = if let Some(aid) = &agent_id {
+                let p = to_params(&[("agent_id", DataValue::Str(aid.as_str().into()))]);
+                let ec = count_query(
+                    r#"?[count(id)] := *edges{id, agent_id}, (agent_id = $agent_id or agent_id = "")"#,
+                    p,
+                )?;
+                let sec = count_query(
+                    r#"?[count(id)] := *edges{id, agent_id}, agent_id = """#,
+                    empty,
+                )?;
+                (ec, sec)
+            } else {
+                let ec = count_query(r"?[count(id)] := *edges{id}", empty.clone())?;
+                let sec = count_query(
+                    r#"?[count(id)] := *edges{id, agent_id}, agent_id = """#,
+                    empty,
+                )?;
+                (ec, sec)
             };
 
             Ok(GraphStats {
@@ -1138,85 +1172,82 @@ impl KnowledgeGraphStore for CozoGraphStore {
 
         tokio::task::spawn_blocking(move || {
             let empty = BTreeMap::new();
-            let count_query = |script: &str, params: BTreeMap<String, DataValue>| -> std::result::Result<u64, UmmsError> {
+            let count_query = |script: &str,
+                               params: BTreeMap<String, DataValue>|
+             -> std::result::Result<u64, UmmsError> {
                 let result = db
                     .run_script(script, params, ScriptMutability::Immutable)
                     .map_err(cozo_err)?;
                 Ok(result.rows.first().map_or(0, |r| dv_to_f32(&r[0]) as u64))
             };
 
-            match &agent_id {
-                Some(aid) => {
-                    let p = to_params(&[("agent_id", DataValue::Str(aid.as_str().into()))]);
+            if let Some(aid) = &agent_id {
+                let p = to_params(&[("agent_id", DataValue::Str(aid.as_str().into()))]);
 
-                    let edges_deleted = count_query(
-                        r"?[count(id)] := *edges{id, agent_id}, agent_id = $agent_id",
-                        p.clone(),
-                    )?;
-                    let nodes_deleted = count_query(
-                        r"?[count(id)] := *nodes{id, agent_id}, agent_id = $agent_id",
-                        p.clone(),
-                    )?;
+                let edges_deleted = count_query(
+                    r"?[count(id)] := *edges{id, agent_id}, agent_id = $agent_id",
+                    p.clone(),
+                )?;
+                let nodes_deleted = count_query(
+                    r"?[count(id)] := *nodes{id, agent_id}, agent_id = $agent_id",
+                    p.clone(),
+                )?;
 
-                    db.run_script(
-                        r"
-                        ?[id] := *edges{id, agent_id}, agent_id = $agent_id
-                        :rm edges {id}
-                        ",
-                        p.clone(),
-                        ScriptMutability::Mutable,
-                    )
-                    .map_err(cozo_err)?;
+                db.run_script(
+                    r"
+                    ?[id] := *edges{id, agent_id}, agent_id = $agent_id
+                    :rm edges {id}
+                    ",
+                    p.clone(),
+                    ScriptMutability::Mutable,
+                )
+                .map_err(cozo_err)?;
 
-                    db.run_script(
-                        r"
-                        ?[id] := *nodes{id, agent_id}, agent_id = $agent_id
-                        :rm nodes {id}
-                        ",
-                        p,
-                        ScriptMutability::Mutable,
-                    )
-                    .map_err(cozo_err)?;
+                db.run_script(
+                    r"
+                    ?[id] := *nodes{id, agent_id}, agent_id = $agent_id
+                    :rm nodes {id}
+                    ",
+                    p,
+                    ScriptMutability::Mutable,
+                )
+                .map_err(cozo_err)?;
 
-                    tracing::info!(
-                        agent_id = aid.as_str(),
-                        nodes_deleted,
-                        edges_deleted,
-                        "cozo graph cleared for agent"
-                    );
+                tracing::info!(
+                    agent_id = aid.as_str(),
+                    nodes_deleted,
+                    edges_deleted,
+                    "cozo graph cleared for agent"
+                );
 
-                    Ok((nodes_deleted, edges_deleted))
-                }
-                None => {
-                    let edges_deleted =
-                        count_query(r"?[count(id)] := *edges{id}", empty.clone())?;
-                    let nodes_deleted =
-                        count_query(r"?[count(id)] := *nodes{id}", empty.clone())?;
+                Ok((nodes_deleted, edges_deleted))
+            } else {
+                let edges_deleted = count_query(r"?[count(id)] := *edges{id}", empty.clone())?;
+                let nodes_deleted = count_query(r"?[count(id)] := *nodes{id}", empty.clone())?;
 
-                    db.run_script(
-                        r"
-                        ?[id] := *edges{id}
-                        :rm edges {id}
-                        ",
-                        empty.clone(),
-                        ScriptMutability::Mutable,
-                    )
-                    .map_err(cozo_err)?;
+                db.run_script(
+                    r"
+                    ?[id] := *edges{id}
+                    :rm edges {id}
+                    ",
+                    empty.clone(),
+                    ScriptMutability::Mutable,
+                )
+                .map_err(cozo_err)?;
 
-                    db.run_script(
-                        r"
-                        ?[id] := *nodes{id}
-                        :rm nodes {id}
-                        ",
-                        empty,
-                        ScriptMutability::Mutable,
-                    )
-                    .map_err(cozo_err)?;
+                db.run_script(
+                    r"
+                    ?[id] := *nodes{id}
+                    :rm nodes {id}
+                    ",
+                    empty,
+                    ScriptMutability::Mutable,
+                )
+                .map_err(cozo_err)?;
 
-                    tracing::info!(nodes_deleted, edges_deleted, "cozo graph cleared (all)");
+                tracing::info!(nodes_deleted, edges_deleted, "cozo graph cleared (all)");
 
-                    Ok((nodes_deleted, edges_deleted))
-                }
+                Ok((nodes_deleted, edges_deleted))
             }
         })
         .await
@@ -1247,13 +1278,7 @@ mod tests {
         }
     }
 
-    fn make_edge(
-        id: &str,
-        src: &str,
-        tgt: &str,
-        relation: &str,
-        agent_id: Option<&str>,
-    ) -> KgEdge {
+    fn make_edge(id: &str, src: &str, tgt: &str, relation: &str, agent_id: Option<&str>) -> KgEdge {
         KgEdge {
             id: EdgeId::from_str(id).unwrap(),
             source_id: NodeId::from_str(src).unwrap(),
@@ -1291,14 +1316,23 @@ mod tests {
     #[tokio::test]
     async fn add_edge_and_edges_of() {
         let store = in_memory_store();
-        store.add_node(&make_node("n1", "Node 1", None)).await.unwrap();
-        store.add_node(&make_node("n2", "Node 2", None)).await.unwrap();
+        store
+            .add_node(&make_node("n1", "Node 1", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("n2", "Node 2", None))
+            .await
+            .unwrap();
 
         let edge = make_edge("e1", "n1", "n2", "links_to", None);
         let eid = store.add_edge(&edge).await.unwrap();
         assert_eq!(eid.as_str(), "e1");
 
-        let edges = store.edges_of(&NodeId::from_str("n1").unwrap()).await.unwrap();
+        let edges = store
+            .edges_of(&NodeId::from_str("n1").unwrap())
+            .await
+            .unwrap();
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].relation, "links_to");
     }
@@ -1309,27 +1343,54 @@ mod tests {
         store.add_node(&make_node("x", "X", None)).await.unwrap();
         store.add_node(&make_node("y", "Y", None)).await.unwrap();
         store.add_node(&make_node("z", "Z", None)).await.unwrap();
-        store.add_edge(&make_edge("e-xy", "x", "y", "r", None)).await.unwrap();
-        store.add_edge(&make_edge("e-yz", "y", "z", "r", None)).await.unwrap();
+        store
+            .add_edge(&make_edge("e-xy", "x", "y", "r", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("e-yz", "y", "z", "r", None))
+            .await
+            .unwrap();
 
-        store.delete_node(&NodeId::from_str("y").unwrap()).await.unwrap();
+        store
+            .delete_node(&NodeId::from_str("y").unwrap())
+            .await
+            .unwrap();
 
-        let y = store.get_node(&NodeId::from_str("y").unwrap()).await.unwrap();
+        let y = store
+            .get_node(&NodeId::from_str("y").unwrap())
+            .await
+            .unwrap();
         assert!(y.is_none());
 
-        let x_edges = store.edges_of(&NodeId::from_str("x").unwrap()).await.unwrap();
+        let x_edges = store
+            .edges_of(&NodeId::from_str("x").unwrap())
+            .await
+            .unwrap();
         assert!(x_edges.is_empty());
 
-        let z = store.get_node(&NodeId::from_str("z").unwrap()).await.unwrap();
+        let z = store
+            .get_node(&NodeId::from_str("z").unwrap())
+            .await
+            .unwrap();
         assert!(z.is_some());
     }
 
     #[tokio::test]
     async fn find_nodes_scoped_by_agent() {
         let store = in_memory_store();
-        store.add_node(&make_node("shared-1", "Shared Concept", None)).await.unwrap();
-        store.add_node(&make_node("a-priv", "Agent A Secret", Some("agent-a"))).await.unwrap();
-        store.add_node(&make_node("b-priv", "Agent B Secret", Some("agent-b"))).await.unwrap();
+        store
+            .add_node(&make_node("shared-1", "Shared Concept", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("a-priv", "Agent A Secret", Some("agent-a")))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("b-priv", "Agent B Secret", Some("agent-b")))
+            .await
+            .unwrap();
 
         let a_nodes = store
             .find_nodes("", Some(&AgentId::from_str("agent-a").unwrap()), 10)
@@ -1348,9 +1409,18 @@ mod tests {
         store.add_node(&make_node("b", "B", None)).await.unwrap();
         store.add_node(&make_node("c", "C", None)).await.unwrap();
         store.add_node(&make_node("d", "D", None)).await.unwrap();
-        store.add_edge(&make_edge("e-ab", "a", "b", "r", None)).await.unwrap();
-        store.add_edge(&make_edge("e-bc", "b", "c", "r", None)).await.unwrap();
-        store.add_edge(&make_edge("e-cd", "c", "d", "r", None)).await.unwrap();
+        store
+            .add_edge(&make_edge("e-ab", "a", "b", "r", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("e-bc", "b", "c", "r", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("e-cd", "c", "d", "r", None))
+            .await
+            .unwrap();
 
         let (nodes, edges) = store
             .traverse(&NodeId::from_str("a").unwrap(), 2, None)
@@ -1369,11 +1439,26 @@ mod tests {
     #[tokio::test]
     async fn merge_nodes_redirects_edges() {
         let store = in_memory_store();
-        store.add_node(&make_node("survive", "Survivor", None)).await.unwrap();
-        store.add_node(&make_node("absorb", "Absorbed", None)).await.unwrap();
-        store.add_node(&make_node("other", "Other", None)).await.unwrap();
-        store.add_edge(&make_edge("e1", "other", "absorb", "rel", None)).await.unwrap();
-        store.add_edge(&make_edge("e2", "absorb", "other", "rel2", None)).await.unwrap();
+        store
+            .add_node(&make_node("survive", "Survivor", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("absorb", "Absorbed", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("other", "Other", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("e1", "other", "absorb", "rel", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("e2", "absorb", "other", "rel2", None))
+            .await
+            .unwrap();
 
         let redirected = store
             .merge_nodes(
@@ -1386,7 +1471,10 @@ mod tests {
 
         assert_eq!(redirected.len(), 2);
 
-        let absorbed = store.get_node(&NodeId::from_str("absorb").unwrap()).await.unwrap();
+        let absorbed = store
+            .get_node(&NodeId::from_str("absorb").unwrap())
+            .await
+            .unwrap();
         assert!(absorbed.is_none());
 
         let survivor = store
@@ -1410,11 +1498,26 @@ mod tests {
     #[tokio::test]
     async fn stats_returns_correct_counts() {
         let store = in_memory_store();
-        store.add_node(&make_node("s1", "Shared1", None)).await.unwrap();
-        store.add_node(&make_node("s2", "Shared2", None)).await.unwrap();
-        store.add_node(&make_node("a1", "AgentA", Some("agent-a"))).await.unwrap();
-        store.add_edge(&make_edge("es1", "s1", "s2", "r", None)).await.unwrap();
-        store.add_edge(&make_edge("ea1", "s1", "a1", "r", Some("agent-a"))).await.unwrap();
+        store
+            .add_node(&make_node("s1", "Shared1", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("s2", "Shared2", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("a1", "AgentA", Some("agent-a")))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("es1", "s1", "s2", "r", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("ea1", "s1", "a1", "r", Some("agent-a")))
+            .await
+            .unwrap();
 
         let s = store
             .stats(Some(&AgentId::from_str("agent-a").unwrap()))
@@ -1435,8 +1538,14 @@ mod tests {
     #[tokio::test]
     async fn agent_isolation() {
         let store = in_memory_store();
-        store.add_node(&make_node("a1", "Agent A Node", Some("agent-a"))).await.unwrap();
-        store.add_node(&make_node("b1", "Agent B Node", Some("agent-b"))).await.unwrap();
+        store
+            .add_node(&make_node("a1", "Agent A Node", Some("agent-a")))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("b1", "Agent B Node", Some("agent-b")))
+            .await
+            .unwrap();
 
         let a_nodes = store
             .nodes_for_agent(&AgentId::from_str("agent-a").unwrap(), false)
@@ -1459,8 +1568,14 @@ mod tests {
         store.add_node(&make_node("n1", "N1", None)).await.unwrap();
         store.add_node(&make_node("n2", "N2", None)).await.unwrap();
         store.add_node(&make_node("n3", "N3", None)).await.unwrap();
-        store.add_edge(&make_edge("e1", "n1", "n2", "r", None)).await.unwrap();
-        store.add_edge(&make_edge("e2", "n2", "n3", "r", None)).await.unwrap();
+        store
+            .add_edge(&make_edge("e1", "n1", "n2", "r", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("e2", "n2", "n3", "r", None))
+            .await
+            .unwrap();
 
         store
             .batch_update_edge_weights(&[
@@ -1470,7 +1585,10 @@ mod tests {
             .await
             .unwrap();
 
-        let edges = store.edges_of(&NodeId::from_str("n2").unwrap()).await.unwrap();
+        let edges = store
+            .edges_of(&NodeId::from_str("n2").unwrap())
+            .await
+            .unwrap();
         let e1 = edges.iter().find(|e| e.id.as_str() == "e1").unwrap();
         let e2 = edges.iter().find(|e| e.id.as_str() == "e2").unwrap();
         assert!((e1.weight - 2.5).abs() < f32::EPSILON);
@@ -1480,12 +1598,22 @@ mod tests {
     #[tokio::test]
     async fn find_similar_node_pairs_works() {
         let store = in_memory_store();
-        store.add_node(&make_node("n1", "machine learning", Some("agent-a"))).await.unwrap();
         store
-            .add_node(&make_node("n2", "machine learning algorithms", Some("agent-a")))
+            .add_node(&make_node("n1", "machine learning", Some("agent-a")))
             .await
             .unwrap();
-        store.add_node(&make_node("n3", "quantum physics", Some("agent-a"))).await.unwrap();
+        store
+            .add_node(&make_node(
+                "n2",
+                "machine learning algorithms",
+                Some("agent-a"),
+            ))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("n3", "quantum physics", Some("agent-a")))
+            .await
+            .unwrap();
 
         let pairs = store
             .find_similar_node_pairs(Some(&AgentId::from_str("agent-a").unwrap()), 0.3, 10)
@@ -1496,8 +1624,7 @@ mod tests {
         let top_pair = &pairs[0];
         let labels = [top_pair.0.label.as_str(), top_pair.1.label.as_str()];
         assert!(
-            labels.contains(&"machine learning")
-                && labels.contains(&"machine learning algorithms")
+            labels.contains(&"machine learning") && labels.contains(&"machine learning algorithms")
         );
         assert!(top_pair.2 > 0.3);
     }

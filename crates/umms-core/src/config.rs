@@ -263,7 +263,7 @@ pub struct ModelConfig {
     pub model_name: String,
     /// Environment variable name holding the API key.
     pub api_key_env: String,
-    /// Task types this model supports (e.g., ["embedding"], ["generation", "chat"]).
+    /// Task types this model supports (e.g., `["embedding"]`, `["generation", "chat"]`).
     pub tasks: Vec<String>,
     /// Embedding dimension (for embedding models).
     pub dimension: Option<usize>,
@@ -479,7 +479,6 @@ impl Default for PromptConfig {
 // ---------------------------------------------------------------------------
 // Defaults
 // ---------------------------------------------------------------------------
-
 
 impl Default for CacheConfig {
     fn default() -> Self {

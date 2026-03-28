@@ -44,9 +44,7 @@ impl Schedule {
     /// Compute the next run time given the last run time (or now if never run).
     pub fn next_run_after(&self, last: DateTime<Utc>) -> Option<DateTime<Utc>> {
         match self {
-            Self::IntervalSeconds(secs) => {
-                Some(last + chrono::Duration::seconds(*secs as i64))
-            }
+            Self::IntervalSeconds(secs) => Some(last + chrono::Duration::seconds(*secs as i64)),
             Self::Manual => None,
         }
     }
@@ -160,9 +158,9 @@ impl std::str::FromStr for TaskType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "consolidation" => Ok(Self::Consolidation),
-            other if other.starts_with("custom:") => {
-                Ok(Self::Custom(other.strip_prefix("custom:").unwrap().to_owned()))
-            }
+            other if other.starts_with("custom:") => Ok(Self::Custom(
+                other.strip_prefix("custom:").unwrap().to_owned(),
+            )),
             other => Err(format!("unknown task type: {other}")),
         }
     }

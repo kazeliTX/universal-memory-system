@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 
 use std::str::FromStr;
 
@@ -11,6 +11,7 @@ use umms_core::traits::{Encoder, VectorStore};
 use umms_observe::{AuditEventBuilder, AuditEventType};
 
 use crate::AppState;
+use crate::error::ApiError;
 use crate::response::{
     EncoderStatusResponse, PipelineLatency, PipelineStats, SearchHit, SemanticSearchResponse,
 };
@@ -19,24 +20,24 @@ use crate::response::{
 pub async fn encode_text(
     State(state): State<Arc<AppState>>,
     Json(body): Json<EncodeTextRequest>,
-) -> Result<Json<EncodeTextResponse>, String> {
-    let encoder = state
-        .encoder
-        .as_ref()
-        .ok_or_else(|| "Encoder not available (GEMINI_API_KEY not set)".to_owned())?;
+) -> Result<Json<EncodeTextResponse>, ApiError> {
+    let encoder = state.encoder.as_ref().ok_or_else(|| {
+        ApiError::Internal("Encoder not available (GEMINI_API_KEY not set)".into())
+    })?;
 
     let vector = encoder
         .encode_text(&body.text)
         .await
-        .map_err(|e| format!("Encoding failed: {e}"))?;
+        .map_err(|e| ApiError::Internal(format!("Encoding failed: {e}")))?;
 
     state.audit.record(
-        AuditEventBuilder::new(AuditEventType::Encode, "_encoder")
-            .details(serde_json::json!({
+        AuditEventBuilder::new_system(AuditEventType::Encode, "_encoder").details(
+            serde_json::json!({
                 "action": "encode_text",
                 "chars": body.text.len(),
                 "dims": vector.len(),
-            })),
+            }),
+        ),
     );
 
     Ok(Json(EncodeTextResponse {
@@ -46,9 +47,7 @@ pub async fn encode_text(
 }
 
 /// GET /api/encoder/status — encoder backend status and stats.
-pub async fn encoder_status(
-    State(state): State<Arc<AppState>>,
-) -> Json<EncoderStatusResponse> {
+pub async fn encoder_status(State(state): State<Arc<AppState>>) -> Json<EncoderStatusResponse> {
     match &state.model_pool {
         Some(pool) => {
             if let Some(stats) = pool.embedding_stats() {
@@ -92,21 +91,24 @@ pub async fn encoder_status(
 /// POST /api/search — hybrid retrieval pipeline (BM25+Vector+Rerank+Diffusion).
 ///
 /// Falls back to pure vector search if the retrieval pipeline is unavailable.
+#[allow(clippy::too_many_lines, clippy::similar_names)]
 pub async fn semantic_search(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SemanticSearchRequest>,
-) -> Result<Json<SemanticSearchResponse>, String> {
-    let agent_id = umms_core::types::AgentId::from_str(
-        body.agent_id.as_deref().unwrap_or("coder"),
-    )
-    .map_err(|e| format!("Invalid agent_id: {e}"))?;
+) -> Result<Json<SemanticSearchResponse>, ApiError> {
+    let agent_id_str = body
+        .agent_id
+        .as_deref()
+        .ok_or_else(|| ApiError::BadRequest("agent_id is required".into()))?;
+    let agent_id = umms_core::types::AgentId::from_str(agent_id_str)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid agent_id: {e}")))?;
 
     // Try hybrid pipeline first, fall back to pure vector search
     let (results, latency, pipeline) = if let Some(ref retriever) = state.retriever {
         let pr = retriever
             .retrieve_with_sources(&body.query, &agent_id)
             .await
-            .map_err(|e| format!("Retrieval failed: {e}"))?;
+            .map_err(|e| ApiError::Internal(format!("Retrieval failed: {e}")))?;
 
         let hits: Vec<SearchHit> = pr
             .retrieval
@@ -154,15 +156,14 @@ pub async fn semantic_search(
     } else {
         // Fallback: pure vector search
         let start = std::time::Instant::now();
-        let encoder = state
-            .encoder
-            .as_ref()
-            .ok_or_else(|| "Encoder not available (GEMINI_API_KEY not set)".to_owned())?;
+        let encoder = state.encoder.as_ref().ok_or_else(|| {
+            ApiError::Internal("Encoder not available (GEMINI_API_KEY not set)".into())
+        })?;
 
         let query_vec = encoder
             .encode_text(&body.query)
             .await
-            .map_err(|e| format!("Encoding failed: {e}"))?;
+            .map_err(|e| ApiError::Internal(format!("Encoding failed: {e}")))?;
 
         let top_k = body.top_k.unwrap_or(5).min(20);
         let include_shared = body.include_shared.unwrap_or(true);
@@ -171,7 +172,7 @@ pub async fn semantic_search(
             .vector
             .search(&agent_id, &query_vec, top_k, include_shared)
             .await
-            .map_err(|e| format!("Search failed: {e}"))?;
+            .map_err(|e| ApiError::Internal(format!("Search failed: {e}")))?;
 
         let hits: Vec<SearchHit> = scored
             .into_iter()
@@ -201,13 +202,12 @@ pub async fn semantic_search(
     };
 
     state.audit.record(
-        AuditEventBuilder::new(AuditEventType::Encode, agent_id.as_str().to_owned())
-            .details(serde_json::json!({
-                "action": "semantic_search",
-                "query": &body.query,
-                "results": results.len(),
-                "latency_ms": latency.total_ms,
-            })),
+        AuditEventBuilder::new(AuditEventType::Encode, &agent_id).details(serde_json::json!({
+            "action": "semantic_search",
+            "query": &body.query,
+            "results": results.len(),
+            "latency_ms": latency.total_ms,
+        })),
     );
 
     Ok(Json(SemanticSearchResponse {

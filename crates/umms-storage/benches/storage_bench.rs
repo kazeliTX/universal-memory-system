@@ -100,7 +100,10 @@ fn bench_vector_insert(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let store = rt
-        .block_on(LanceVectorStore::new(dir.path().to_str().unwrap(), BENCH_DIM))
+        .block_on(LanceVectorStore::new(
+            dir.path().to_str().unwrap(),
+            BENCH_DIM,
+        ))
         .unwrap();
     let agent = AgentId::from_str("vec-bench").unwrap();
 
@@ -118,7 +121,10 @@ fn bench_vector_search(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let store = rt
-        .block_on(LanceVectorStore::new(dir.path().to_str().unwrap(), BENCH_DIM))
+        .block_on(LanceVectorStore::new(
+            dir.path().to_str().unwrap(),
+            BENCH_DIM,
+        ))
         .unwrap();
     let agent = AgentId::from_str("vec-bench").unwrap();
 
@@ -126,7 +132,9 @@ fn bench_vector_search(c: &mut Criterion) {
     let entries: Vec<MemoryEntry> = (0..500).map(|i| make_entry(&agent, i)).collect();
     rt.block_on(store.insert_batch(&entries)).unwrap();
 
-    let query_vec: Vec<f32> = (0..BENCH_DIM).map(|d| (d as f32) / BENCH_DIM as f32).collect();
+    let query_vec: Vec<f32> = (0..BENCH_DIM)
+        .map(|d| (d as f32) / BENCH_DIM as f32)
+        .collect();
 
     c.bench_function("vector_search_top10_in_500", |b| {
         b.iter(|| {
@@ -251,26 +259,12 @@ fn bench_agent_switch(c: &mut Criterion) {
 // Groups
 // ---------------------------------------------------------------------------
 
-criterion_group!(
-    cache_benches,
-    bench_cache_put_get,
-    bench_cache_evict,
-);
+criterion_group!(cache_benches, bench_cache_put_get, bench_cache_evict,);
 
-criterion_group!(
-    vector_benches,
-    bench_vector_insert,
-    bench_vector_search,
-);
+criterion_group!(vector_benches, bench_vector_insert, bench_vector_search,);
 
-criterion_group!(
-    graph_benches,
-    bench_graph_traverse,
-);
+criterion_group!(graph_benches, bench_graph_traverse,);
 
-criterion_group!(
-    agent_benches,
-    bench_agent_switch,
-);
+criterion_group!(agent_benches, bench_agent_switch,);
 
 criterion_main!(cache_benches, vector_benches, graph_benches, agent_benches);

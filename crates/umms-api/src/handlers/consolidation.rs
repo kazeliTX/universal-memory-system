@@ -6,14 +6,15 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use tracing::{error, info};
 use umms_consolidation::ConsolidationScheduler;
 use umms_core::config;
 use umms_core::types::AgentId;
 use umms_observe::{AuditEventBuilder, AuditEventType};
 
+use crate::error::ApiError;
 use crate::response::{
     ConsolidationReportResponse, DecayResultResponse, EvolutionResultResponse,
     PromoteResultResponse, WkdResultResponse,
@@ -24,9 +25,9 @@ use crate::state::AppState;
 pub async fn run_consolidation(
     State(state): State<Arc<AppState>>,
     Path(agent_id): Path<String>,
-) -> Result<Json<ConsolidationReportResponse>, String> {
+) -> Result<Json<ConsolidationReportResponse>, ApiError> {
     let aid = AgentId::from_str(&agent_id)
-        .map_err(|e| format!("invalid agent_id: {e}"))?;
+        .map_err(|e| ApiError::BadRequest(format!("invalid agent_id: {e}")))?;
 
     let cfg = config::load_config();
 
@@ -44,25 +45,23 @@ pub async fn run_consolidation(
         .await
         .map_err(|e| {
             error!(agent_id = %aid, error = %e, "Consolidation cycle failed");
-            format!("Consolidation failed: {e}")
+            ApiError::Internal(format!("Consolidation failed: {e}"))
         })?;
 
     // Record audit event
     state.audit.record(
-        AuditEventBuilder::new(AuditEventType::Promote, agent_id.clone()).details(
-            serde_json::json!({
-                "action": "consolidation_completed",
-                "agent_id": &agent_id,
-                "decay_updated": report.decay.updated,
-                "decay_archived": report.decay.archived,
-                "wkd_clusters": report.wkd.clusters_found,
-                "wkd_distilled": report.wkd.distilled_created,
-                "nodes_merged": report.evolution.nodes_merged,
-                "edges_strengthened": report.evolution.edges_strengthened,
-                "promoted": report.promotion.promoted,
-                "total_ms": report.total_ms,
-            }),
-        ),
+        AuditEventBuilder::new(AuditEventType::Promote, &aid).details(serde_json::json!({
+            "action": "consolidation_completed",
+            "agent_id": &agent_id,
+            "decay_updated": report.decay.updated,
+            "decay_archived": report.decay.archived,
+            "wkd_clusters": report.wkd.clusters_found,
+            "wkd_distilled": report.wkd.distilled_created,
+            "nodes_merged": report.evolution.nodes_merged,
+            "edges_strengthened": report.evolution.edges_strengthened,
+            "promoted": report.promotion.promoted,
+            "total_ms": report.total_ms,
+        })),
     );
 
     Ok(Json(ConsolidationReportResponse {

@@ -1,4 +1,3 @@
-
 //! # umms-encoder
 //!
 //! Encoding service for UMMS.

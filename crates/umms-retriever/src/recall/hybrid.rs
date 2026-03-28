@@ -12,7 +12,7 @@ use tracing::instrument;
 use umms_core::config::RetrieverConfig;
 use umms_core::error::Result;
 use umms_core::traits::{Encoder, VectorStore};
-use umms_core::types::{AgentId, FromStr, ScoredMemory, ScoreSource};
+use umms_core::types::{AgentId, FromStr, ScoreSource, ScoredMemory};
 
 use super::bm25::Bm25Index;
 
@@ -44,7 +44,7 @@ pub struct HybridResult {
 pub struct HybridRecall {
     bm25: Arc<Bm25Index>,
     vector: Arc<dyn VectorStore>,
-    encoder: Arc<dyn Encoder>,
+    _encoder: Arc<dyn Encoder>,
     config: RetrieverConfig,
 }
 
@@ -55,12 +55,18 @@ impl HybridRecall {
         encoder: Arc<dyn Encoder>,
         config: RetrieverConfig,
     ) -> Self {
-        Self { bm25, vector, encoder, config }
+        Self {
+            bm25,
+            vector,
+            _encoder: encoder,
+            config,
+        }
     }
 
     /// Execute hybrid recall: BM25 ∪ Vector → RRF fusion → top-k.
     ///
     /// Returns `HybridResult` with per-hit source tracking for visualization.
+    #[allow(clippy::too_many_lines)]
     #[instrument(skip(self), fields(query, agent = %agent_id))]
     pub async fn recall(
         &self,
@@ -76,7 +82,8 @@ impl HybridRecall {
         let bm25_results = self.bm25.search(query, agent_id, top_k, true)?;
 
         // 2. Vector ANN search
-        let vector_results = self.vector
+        let vector_results = self
+            .vector
             .search(agent_id, query_vector, top_k, true)
             .await?;
 
@@ -173,7 +180,10 @@ impl HybridRecall {
             if let Some(mut sm) = entry.memory {
                 sm.score = entry.rrf_score;
                 sm.source = ScoreSource::Hybrid;
-                hits.push(HybridHit { memory: sm, source_info });
+                hits.push(HybridHit {
+                    memory: sm,
+                    source_info,
+                });
             } else {
                 // BM25-only hit: fetch full entry from vector store
                 let Ok(mid) = umms_core::types::MemoryId::from_str(&id) else {
@@ -192,7 +202,12 @@ impl HybridRecall {
             }
         }
 
-        Ok(HybridResult { hits, bm25_only, vector_only, both })
+        Ok(HybridResult {
+            hits,
+            bm25_only,
+            vector_only,
+            both,
+        })
     }
 }
 

@@ -28,7 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_config = AppConfig::dev();
     tracing::info!(data_dir = ?app_config.data_dir, "initialising storage backends");
 
-    let state = AppState::shared(app_config).await
+    let state = AppState::shared(app_config)
+        .await
         .map_err(|e| format!("Failed to initialise: {e}"))?;
 
     // Log available model information
@@ -55,8 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = build_router(state);
 
     // Parse host/port: env vars override config
-    let host = std::env::var("UMMS_HOST")
-        .unwrap_or_else(|_| umms_config.http.host.clone());
+    let host = std::env::var("UMMS_HOST").unwrap_or_else(|_| umms_config.http.host.clone());
     let port: u16 = std::env::var("UMMS_PORT")
         .ok()
         .and_then(|p| p.parse().ok())

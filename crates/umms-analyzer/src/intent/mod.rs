@@ -28,11 +28,34 @@ pub struct IntentClassifier;
 
 // Greetings and acknowledgments that do not need retrieval
 const GREETING_PATTERNS: &[&str] = &[
-    "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
-    "thanks", "thank you", "ok", "okay", "got it", "sure", "yes", "no",
-    "bye", "goodbye", "see you",
-    "你好", "嗨", "谢谢", "好的", "可以", "再见", "早上好", "晚上好",
-    "嗯", "哦", "行",
+    "hello",
+    "hi",
+    "hey",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "thanks",
+    "thank you",
+    "ok",
+    "okay",
+    "got it",
+    "sure",
+    "yes",
+    "no",
+    "bye",
+    "goodbye",
+    "see you",
+    "你好",
+    "嗨",
+    "谢谢",
+    "好的",
+    "可以",
+    "再见",
+    "早上好",
+    "晚上好",
+    "嗯",
+    "哦",
+    "行",
 ];
 
 impl IntentClassifier {
@@ -60,8 +83,19 @@ impl IntentClassifier {
         let lower = query.trim().to_lowercase();
         matches!(
             lower.as_str(),
-            "ok" | "okay" | "got it" | "sure" | "yes" | "no"
-                | "thanks" | "thank you" | "好的" | "可以" | "嗯" | "哦" | "行" | "谢谢"
+            "ok" | "okay"
+                | "got it"
+                | "sure"
+                | "yes"
+                | "no"
+                | "thanks"
+                | "thank you"
+                | "好的"
+                | "可以"
+                | "嗯"
+                | "哦"
+                | "行"
+                | "谢谢"
         )
     }
 
@@ -84,10 +118,7 @@ impl IntentClassifier {
         let decomposition = LgsrrDecomposer::decompose(query);
         let intent = decomposition.reasoning.intent.clone();
 
-        let needs_retrieval = match &intent {
-            UserIntent::Converse => false,
-            _ => true,
-        };
+        let needs_retrieval = !matches!(&intent, UserIntent::Converse);
 
         let needs_generation = true; // Almost always need to generate
 
@@ -101,7 +132,9 @@ impl IntentClassifier {
 }
 
 fn is_greeting(lower: &str) -> bool {
-    GREETING_PATTERNS.iter().any(|p| lower == *p || lower.starts_with(p))
+    GREETING_PATTERNS
+        .iter()
+        .any(|p| lower == *p || lower.starts_with(p))
 }
 
 #[cfg(test)]

@@ -25,9 +25,9 @@ const EN_STOPWORDS: &[&str] = &[
     "again", "further", "then", "once", "here", "there", "when", "where", "why", "how", "all",
     "each", "every", "both", "few", "more", "most", "other", "some", "such", "no", "nor", "not",
     "only", "own", "same", "so", "than", "too", "very", "just", "because", "but", "and", "or",
-    "if", "while", "about", "up", "its", "it", "i", "me", "my", "we", "our", "you", "your",
-    "he", "him", "his", "she", "her", "they", "them", "their", "this", "that", "these", "those",
-    "what", "which", "who", "whom", "am",
+    "if", "while", "about", "up", "its", "it", "i", "me", "my", "we", "our", "you", "your", "he",
+    "him", "his", "she", "her", "they", "them", "their", "this", "that", "these", "those", "what",
+    "which", "who", "whom", "am",
 ];
 
 // ---------------------------------------------------------------------------
@@ -49,8 +49,7 @@ impl LgsrrDecomposer {
         let grammatical = Self::analyze_grammatical(query);
         let semantic = Self::analyze_semantic(query, &lexical);
         let relational = Self::analyze_relational(query, &lexical);
-        let reasoning =
-            Self::analyze_reasoning(query, &lexical, &grammatical, &semantic);
+        let reasoning = Self::analyze_reasoning(query, &lexical, &grammatical, &semantic);
 
         LgsrrDecomposition {
             query: query.to_owned(),
@@ -87,7 +86,7 @@ impl LgsrrDecomposer {
             .iter()
             .filter(|t| {
                 let first = t.chars().next();
-                first.is_some_and(|c| c.is_uppercase())
+                first.is_some_and(char::is_uppercase)
                     && t.chars().count() > 1
                     && !is_sentence_start(query, t)
             })
@@ -143,8 +142,8 @@ impl LgsrrDecomposer {
         // Complexity: multiple domains + comparison patterns + temporal = more complex
         let domain_factor = (domains.len() as f32 / 3.0).clamp(0.0, 1.0);
         let length_complexity = (query.chars().count() as f32 / 100.0).clamp(0.0, 1.0);
-        let complexity = ((domain_factor * 0.4 + length_complexity * 0.3 + term_factor * 0.3))
-            .clamp(0.0, 1.0);
+        let complexity =
+            (domain_factor * 0.4 + length_complexity * 0.3 + term_factor * 0.3).clamp(0.0, 1.0);
 
         SemanticLayer {
             domains,
@@ -196,10 +195,7 @@ fn detect_language(query: &str) -> String {
     if total == 0 {
         return "en".to_owned();
     }
-    let cjk = query
-        .chars()
-        .filter(|c| is_cjk_char(*c))
-        .count();
+    let cjk = query.chars().filter(|c| is_cjk_char(*c)).count();
     let ratio = cjk as f32 / total as f32;
     if ratio > 0.5 {
         "zh".to_owned()
@@ -235,10 +231,8 @@ fn tokenize(query: &str) -> Vec<String> {
             tokens.push(c.to_string());
         } else if c.is_alphanumeric() || c == '_' || c == '-' {
             current.push(c);
-        } else {
-            if !current.is_empty() {
-                tokens.push(std::mem::take(&mut current));
-            }
+        } else if !current.is_empty() {
+            tokens.push(std::mem::take(&mut current));
         }
     }
     if !current.is_empty() {
@@ -284,7 +278,10 @@ fn detect_query_type(lower: &str, _raw: &str) -> QueryType {
     }
 
     // English patterns
-    if starts_with_any(lower, &["what ", "what's ", "which ", "who ", "who's ", "where "]) {
+    if starts_with_any(
+        lower,
+        &["what ", "what's ", "which ", "who ", "who's ", "where "],
+    ) {
         return QueryType::Factual;
     }
     if starts_with_any(lower, &["how to ", "how do ", "how can ", "how should "]) {
@@ -293,7 +290,16 @@ fn detect_query_type(lower: &str, _raw: &str) -> QueryType {
     if starts_with_any(lower, &["why ", "how come "]) {
         return QueryType::Causal;
     }
-    if contains_any(lower, &[" vs ", " vs. ", " versus ", " compared to ", " difference between "]) {
+    if contains_any(
+        lower,
+        &[
+            " vs ",
+            " vs. ",
+            " versus ",
+            " compared to ",
+            " difference between ",
+        ],
+    ) {
         return QueryType::Comparative;
     }
     if starts_with_any(lower, &["should ", "recommend ", "best ", "suggest "])
@@ -311,31 +317,67 @@ fn detect_query_type(lower: &str, _raw: &str) -> QueryType {
 }
 
 fn detect_comparison(lower: &str, raw: &str) -> bool {
-    contains_any(lower, &[
-        " vs ", " vs. ", " versus ", " compared to ", " difference between ",
-        " differ from ", " better than ", " worse than ",
-    ]) || contains_any(raw, &[
-        "对比", "区别", "比较", "和…的区别", "A和B",
-    ]) || {
-        // Pattern: "X 和 Y 的区别"
-        raw.contains('和') && (raw.contains("区别") || raw.contains("不同") || raw.contains("差异"))
-    }
+    contains_any(
+        lower,
+        &[
+            " vs ",
+            " vs. ",
+            " versus ",
+            " compared to ",
+            " difference between ",
+            " differ from ",
+            " better than ",
+            " worse than ",
+        ],
+    ) || contains_any(raw, &["对比", "区别", "比较", "和…的区别", "A和B"])
+        || {
+            // Pattern: "X 和 Y 的区别"
+            raw.contains('和')
+                && (raw.contains("区别") || raw.contains("不同") || raw.contains("差异"))
+        }
 }
 
 fn detect_negation(lower: &str, raw: &str) -> bool {
-    contains_any(lower, &[
-        "not ", "don't ", "doesn't ", "didn't ", "won't ", "wouldn't ",
-        "can't ", "cannot ", "isn't ", "aren't ", "wasn't ", "weren't ",
-        " no ", "never ",
-    ]) || contains_any(raw, &["不", "没", "没有", "别", "非", "无"])
+    contains_any(
+        lower,
+        &[
+            "not ",
+            "don't ",
+            "doesn't ",
+            "didn't ",
+            "won't ",
+            "wouldn't ",
+            "can't ",
+            "cannot ",
+            "isn't ",
+            "aren't ",
+            "wasn't ",
+            "weren't ",
+            " no ",
+            "never ",
+        ],
+    ) || contains_any(raw, &["不", "没", "没有", "别", "非", "无"])
 }
 
 fn detect_temporal(lower: &str, raw: &str) -> Option<String> {
     // English temporal patterns
     let en_temporal = [
-        "yesterday", "today", "tomorrow", "last week", "last month", "last year",
-        "this week", "this month", "this year", "next week", "next month", "next year",
-        "recently", "lately", "earlier", "before",
+        "yesterday",
+        "today",
+        "tomorrow",
+        "last week",
+        "last month",
+        "last year",
+        "this week",
+        "this month",
+        "this year",
+        "next week",
+        "next month",
+        "next year",
+        "recently",
+        "lately",
+        "earlier",
+        "before",
     ];
     for pattern in &en_temporal {
         if lower.contains(pattern) {
@@ -345,9 +387,21 @@ fn detect_temporal(lower: &str, raw: &str) -> Option<String> {
 
     // Chinese temporal patterns
     let zh_temporal = [
-        "昨天", "今天", "明天", "上周", "上个月", "去年",
-        "这周", "这个月", "今年", "下周", "下个月", "明年",
-        "最近", "以前", "之前",
+        "昨天",
+        "今天",
+        "明天",
+        "上周",
+        "上个月",
+        "去年",
+        "这周",
+        "这个月",
+        "今年",
+        "下周",
+        "下个月",
+        "明年",
+        "最近",
+        "以前",
+        "之前",
     ];
     for pattern in &zh_temporal {
         if raw.contains(pattern) {
@@ -380,42 +434,162 @@ fn detect_temporal(lower: &str, raw: &str) -> Option<String> {
 // Domain detection
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_lines)]
 fn detect_domains(query: &str, key_terms: &[String]) -> Vec<String> {
     let lower = query.to_lowercase();
     let mut domains = Vec::new();
 
     let domain_patterns: &[(&str, &[&str])] = &[
-        ("programming", &[
-            "code", "coding", "program", "function", "variable", "algorithm", "debug",
-            "compile", "rust", "python", "javascript", "typescript", "java", "api",
-            "database", "sql", "git", "docker", "kubernetes", "linux", "server",
-            "编程", "代码", "函数", "变量", "算法", "调试", "编译", "数据库",
-        ]),
-        ("science", &[
-            "physics", "chemistry", "biology", "math", "mathematics", "equation",
-            "theorem", "experiment", "hypothesis", "research", "quantum", "molecule",
-            "物理", "化学", "生物", "数学", "方程", "实验", "研究", "量子",
-        ]),
-        ("writing", &[
-            "write", "writing", "essay", "article", "story", "novel", "poetry",
-            "grammar", "sentence", "paragraph", "draft", "edit",
-            "写作", "文章", "故事", "小说", "诗", "语法", "段落",
-        ]),
-        ("business", &[
-            "business", "company", "market", "finance", "investment", "startup",
-            "management", "strategy", "revenue", "profit", "customer",
-            "商业", "公司", "市场", "金融", "投资", "管理", "策略",
-        ]),
-        ("health", &[
-            "health", "medical", "doctor", "disease", "symptom", "treatment",
-            "medicine", "diagnosis", "therapy", "surgery",
-            "健康", "医疗", "医生", "疾病", "症状", "治疗", "药",
-        ]),
-        ("education", &[
-            "learn", "learning", "study", "education", "course", "tutorial",
-            "teach", "student", "school", "university",
-            "学习", "教育", "课程", "教程", "教学", "学生", "学校",
-        ]),
+        (
+            "programming",
+            &[
+                "code",
+                "coding",
+                "program",
+                "function",
+                "variable",
+                "algorithm",
+                "debug",
+                "compile",
+                "rust",
+                "python",
+                "javascript",
+                "typescript",
+                "java",
+                "api",
+                "database",
+                "sql",
+                "git",
+                "docker",
+                "kubernetes",
+                "linux",
+                "server",
+                "编程",
+                "代码",
+                "函数",
+                "变量",
+                "算法",
+                "调试",
+                "编译",
+                "数据库",
+            ],
+        ),
+        (
+            "science",
+            &[
+                "physics",
+                "chemistry",
+                "biology",
+                "math",
+                "mathematics",
+                "equation",
+                "theorem",
+                "experiment",
+                "hypothesis",
+                "research",
+                "quantum",
+                "molecule",
+                "物理",
+                "化学",
+                "生物",
+                "数学",
+                "方程",
+                "实验",
+                "研究",
+                "量子",
+            ],
+        ),
+        (
+            "writing",
+            &[
+                "write",
+                "writing",
+                "essay",
+                "article",
+                "story",
+                "novel",
+                "poetry",
+                "grammar",
+                "sentence",
+                "paragraph",
+                "draft",
+                "edit",
+                "写作",
+                "文章",
+                "故事",
+                "小说",
+                "诗",
+                "语法",
+                "段落",
+            ],
+        ),
+        (
+            "business",
+            &[
+                "business",
+                "company",
+                "market",
+                "finance",
+                "investment",
+                "startup",
+                "management",
+                "strategy",
+                "revenue",
+                "profit",
+                "customer",
+                "商业",
+                "公司",
+                "市场",
+                "金融",
+                "投资",
+                "管理",
+                "策略",
+            ],
+        ),
+        (
+            "health",
+            &[
+                "health",
+                "medical",
+                "doctor",
+                "disease",
+                "symptom",
+                "treatment",
+                "medicine",
+                "diagnosis",
+                "therapy",
+                "surgery",
+                "健康",
+                "医疗",
+                "医生",
+                "疾病",
+                "症状",
+                "治疗",
+                "药",
+            ],
+        ),
+        (
+            "education",
+            &[
+                "learn",
+                "learning",
+                "study",
+                "education",
+                "course",
+                "tutorial",
+                "teach",
+                "student",
+                "school",
+                "university",
+                "学习",
+                "教育",
+                "课程",
+                "教程",
+                "教学",
+                "学生",
+                "学校",
+            ],
+        ),
     ];
 
     for (domain, keywords) in domain_patterns {
@@ -455,12 +629,14 @@ fn detect_relations(query: &str, lexical: &LexicalLayer) -> Vec<QueryRelation> {
     }
 
     // Pattern: "X 和 Y 的区别" (Chinese comparison)
-    if query.contains('和') && (query.contains("区别") || query.contains("不同") || query.contains("差异")) {
+    if query.contains('和')
+        && (query.contains("区别") || query.contains("不同") || query.contains("差异"))
+    {
         if let Some(he_pos) = query.find('和') {
             let subject = query[..he_pos].trim().to_owned();
             let rest = &query[he_pos + '和'.len_utf8()..];
             let object = rest
-                .split(|c: char| c == '的' || c == '有')
+                .split(['的', '有'])
                 .next()
                 .unwrap_or("")
                 .trim()
@@ -503,14 +679,15 @@ fn detect_relations(query: &str, lexical: &LexicalLayer) -> Vec<QueryRelation> {
     }
 
     // Pattern: "X is Y" — only if there are exactly two key terms
-    if relations.is_empty() && lexical.key_terms.len() == 2 {
-        if lower.contains(" is ") || query.contains('是') {
-            relations.push(QueryRelation {
-                subject: lexical.key_terms[0].clone(),
-                predicate: "is".to_owned(),
-                object: lexical.key_terms[1].clone(),
-            });
-        }
+    if relations.is_empty()
+        && lexical.key_terms.len() == 2
+        && (lower.contains(" is ") || query.contains('是'))
+    {
+        relations.push(QueryRelation {
+            subject: lexical.key_terms[0].clone(),
+            predicate: "is".to_owned(),
+            object: lexical.key_terms[1].clone(),
+        });
     }
 
     relations
@@ -534,7 +711,7 @@ fn first_n_words(s: &str, n: usize) -> String {
 
 fn infer_intent(grammatical: &GrammaticalLayer, semantic: &SemanticLayer) -> UserIntent {
     match grammatical.query_type {
-        QueryType::Factual => UserIntent::Learn,
+        QueryType::Factual | QueryType::Causal => UserIntent::Learn,
         QueryType::Procedural => {
             if semantic.domains.iter().any(|d| d == "programming") {
                 UserIntent::Create
@@ -542,9 +719,7 @@ fn infer_intent(grammatical: &GrammaticalLayer, semantic: &SemanticLayer) -> Use
                 UserIntent::Solve
             }
         }
-        QueryType::Causal => UserIntent::Learn,
-        QueryType::Comparative => UserIntent::Compare,
-        QueryType::Evaluative => UserIntent::Compare,
+        QueryType::Comparative | QueryType::Evaluative => UserIntent::Compare,
         QueryType::Conversational => {
             if semantic.specificity < 0.2 {
                 UserIntent::Converse
@@ -670,8 +845,17 @@ mod tests {
         let result = LgsrrDecomposer::decompose("What is Rust ownership?");
         assert_eq!(result.grammatical.query_type, QueryType::Factual);
         assert_eq!(result.reasoning.intent, UserIntent::Learn);
-        assert_eq!(result.reasoning.expected_answer, ExpectedAnswer::FactualAnswer);
-        assert!(result.lexical.key_terms.iter().any(|t| t.to_lowercase().contains("rust")));
+        assert_eq!(
+            result.reasoning.expected_answer,
+            ExpectedAnswer::FactualAnswer
+        );
+        assert!(
+            result
+                .lexical
+                .key_terms
+                .iter()
+                .any(|t| t.to_lowercase().contains("rust"))
+        );
         assert!(result.semantic.domains.contains(&"programming".to_owned()));
     }
 
@@ -681,7 +865,10 @@ mod tests {
         assert_eq!(result.grammatical.query_type, QueryType::Procedural);
         assert!(result.lexical.language == "mixed" || result.lexical.language == "zh");
         assert!(result.semantic.domains.contains(&"programming".to_owned()));
-        assert_eq!(result.reasoning.expected_answer, ExpectedAnswer::CodeSnippet);
+        assert_eq!(
+            result.reasoning.expected_answer,
+            ExpectedAnswer::CodeSnippet
+        );
     }
 
     #[test]
@@ -689,7 +876,10 @@ mod tests {
         let result = LgsrrDecomposer::decompose("Why does memory leak happen in C++?");
         assert_eq!(result.grammatical.query_type, QueryType::Causal);
         assert_eq!(result.reasoning.intent, UserIntent::Learn);
-        assert_eq!(result.reasoning.expected_answer, ExpectedAnswer::Explanation);
+        assert_eq!(
+            result.reasoning.expected_answer,
+            ExpectedAnswer::Explanation
+        );
     }
 
     #[test]
@@ -726,7 +916,10 @@ mod tests {
         let result = LgsrrDecomposer::decompose("hello");
         assert_eq!(result.grammatical.query_type, QueryType::Conversational);
         assert_eq!(result.reasoning.intent, UserIntent::Converse);
-        assert_eq!(result.reasoning.expected_answer, ExpectedAnswer::Acknowledgment);
+        assert_eq!(
+            result.reasoning.expected_answer,
+            ExpectedAnswer::Acknowledgment
+        );
         // Conversational → lower top_k
         assert!(result.reasoning.retrieval_hints.top_k_multiplier < 1.0);
     }

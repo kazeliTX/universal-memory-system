@@ -72,6 +72,13 @@ fn parse_diary_entries(
     response: &str,
     agent_id: &str,
 ) -> Result<Vec<DiaryEntry>, serde_json::Error> {
+    #[derive(serde::Deserialize)]
+    struct RawEntry {
+        category: String,
+        content: String,
+        confidence: f32,
+    }
+
     // The LLM may wrap the JSON in markdown code fences, so strip them.
     let cleaned = response
         .trim()
@@ -79,13 +86,6 @@ fn parse_diary_entries(
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
-
-    #[derive(serde::Deserialize)]
-    struct RawEntry {
-        category: String,
-        content: String,
-        confidence: f32,
-    }
 
     let raw: Vec<RawEntry> = serde_json::from_str(cleaned)?;
 

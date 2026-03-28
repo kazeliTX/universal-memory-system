@@ -58,8 +58,8 @@ impl DecayEngine {
         if days_since_access <= 0.0 {
             return current_importance;
         }
-        let base = 1.0 - self.config.rate as f64;
-        let decayed = current_importance as f64 * base.powf(days_since_access);
+        let base = 1.0 - f64::from(self.config.rate);
+        let decayed = f64::from(current_importance) * base.powf(days_since_access);
         (decayed as f32).max(self.config.floor)
     }
 
@@ -110,7 +110,9 @@ impl DecayEngine {
         let now = Utc::now();
 
         loop {
-            let entries = vector_store.list(agent_id, offset, page_size, false).await?;
+            let entries = vector_store
+                .list(agent_id, offset, page_size, false)
+                .await?;
             if entries.is_empty() {
                 break;
             }
@@ -119,8 +121,7 @@ impl DecayEngine {
             scanned += page_len;
 
             for entry in &entries {
-                let days_since_access =
-                    (now - entry.accessed_at).num_seconds() as f64 / 86_400.0;
+                let days_since_access = (now - entry.accessed_at).num_seconds() as f64 / 86_400.0;
 
                 let new_importance = self.calculate_decay(entry.importance, days_since_access);
 
@@ -128,8 +129,7 @@ impl DecayEngine {
                 let archive = self.should_archive(new_importance, days_since_access);
 
                 // Only update if importance actually changed (avoid pointless writes).
-                let importance_changed =
-                    (new_importance - entry.importance).abs() > f32::EPSILON;
+                let importance_changed = (new_importance - entry.importance).abs() > f32::EPSILON;
 
                 if archive {
                     // Archive by setting importance to 0.0 (marks as fully decayed).
@@ -165,7 +165,10 @@ impl DecayEngine {
         }
 
         let elapsed_ms = start.elapsed().as_millis() as u64;
-        info!(scanned, updated, archived, elapsed_ms, "Decay pass complete");
+        info!(
+            scanned,
+            updated, archived, elapsed_ms, "Decay pass complete"
+        );
 
         Ok(DecayResult {
             scanned,

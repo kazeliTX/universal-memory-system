@@ -169,11 +169,7 @@ impl TagExtractor {
 
     /// Extract candidate label strings from skeleton + chunks.
     /// Delegates to the configured tokenizer for text segmentation.
-    fn extract_candidates(
-        &self,
-        skeleton: &DocSkeleton,
-        chunks: &[Chunk],
-    ) -> Vec<Vec<String>> {
+    fn extract_candidates(&self, skeleton: &DocSkeleton, chunks: &[Chunk]) -> Vec<Vec<String>> {
         // Global labels from skeleton (applied to all chunks)
         let mut global_labels: Vec<String> = Vec::new();
 
@@ -203,10 +199,10 @@ impl TagExtractor {
                     .text
                     .split_once('\u{3002}') // Chinese period (。)
                     .or_else(|| chunk.text.split_once(". "))
-                    .map(|(s, _)| s)
-                    .unwrap_or(&chunk.text);
+                    .map_or(chunk.text.as_str(), |(s, _)| s);
 
                 // Limit to 200 chars for efficiency
+                #[allow(clippy::incompatible_msrv)]
                 let truncated = if first_sentence.len() > 200 {
                     &first_sentence[..first_sentence.floor_char_boundary(200)]
                 } else {

@@ -73,7 +73,9 @@ impl AutoPromoter {
         let now = Utc::now();
 
         loop {
-            let entries = vector_store.list(agent_id, offset, page_size, false).await?;
+            let entries = vector_store
+                .list(agent_id, offset, page_size, false)
+                .await?;
             if entries.is_empty() {
                 break;
             }
@@ -87,8 +89,7 @@ impl AutoPromoter {
                     continue;
                 }
 
-                let created_hours_ago =
-                    (now - entry.created_at).num_seconds() as f64 / 3600.0;
+                let created_hours_ago = (now - entry.created_at).num_seconds() as f64 / 3600.0;
 
                 if promotion::meets_promotion_criteria(
                     entry.importance,
@@ -125,7 +126,10 @@ impl AutoPromoter {
         }
 
         let elapsed_ms = start.elapsed().as_millis() as u64;
-        info!(scanned, promoted, elapsed_ms, "Auto-promotion scan complete");
+        info!(
+            scanned,
+            promoted, elapsed_ms, "Auto-promotion scan complete"
+        );
 
         Ok(PromoteResult {
             scanned,

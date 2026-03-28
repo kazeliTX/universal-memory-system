@@ -4,8 +4,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 
 use umms_core::config;
 use umms_core::traits::{RawFileStore, VectorStore};
@@ -18,6 +18,7 @@ use umms_retriever::ingest::tag_extractor::TagExtractor;
 use umms_retriever::tokenizer;
 
 use crate::AppState;
+use crate::error::ApiError;
 use crate::response::{
     ChunkDetailResponse, IngestLatencyResponse, IngestResponse, MultimodalIngestResponse,
 };
@@ -26,17 +27,26 @@ use crate::response::{
 pub async fn ingest_document(
     State(state): State<Arc<AppState>>,
     Json(body): Json<IngestRequest>,
-) -> Result<Json<IngestResponse>, String> {
-    let encoder = state
-        .encoder
-        .as_ref()
-        .ok_or_else(|| "Encoder not available (GEMINI_API_KEY not set)".to_owned())?;
+) -> Result<Json<IngestResponse>, ApiError> {
+    let encoder = state.encoder.as_ref().ok_or_else(|| {
+        ApiError::Internal("Encoder not available (GEMINI_API_KEY not set)".into())
+    })?;
 
-    let agent_id = AgentId::from_str(body.agent_id.as_deref().unwrap_or("coder"))
-        .map_err(|e| format!("Invalid agent_id: {e}"))?;
+    let agent_id_str = body
+        .agent_id
+        .as_deref()
+        .ok_or_else(|| ApiError::BadRequest("agent_id is required".into()))?;
+    let agent_id = AgentId::from_str(agent_id_str)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid agent_id: {e}")))?;
 
     let scope = match body.scope.as_deref() {
-        Some("shared") => IsolationScope::Shared,
+        Some("shared") => {
+            tracing::warn!(
+                agent_id = %agent_id,
+                "Direct shared-scope ingest bypasses consolidation promotion checks"
+            );
+            IsolationScope::Shared
+        }
         _ => IsolationScope::Private,
     };
 
@@ -56,12 +66,8 @@ pub async fn ingest_document(
         Some(Arc::clone(encoder) as Arc<dyn umms_core::traits::Encoder>),
     );
 
-    let mut pipeline = IngestPipeline::new(
-        enc_arc,
-        vec_arc,
-        Arc::clone(&state.bm25),
-        chunker_config,
-    );
+    let mut pipeline =
+        IngestPipeline::new(enc_arc, vec_arc, Arc::clone(&state.bm25), chunker_config);
 
     // Wire up LLM-powered skeleton extraction if model pool is available
     if let Some(ref pool) = state.model_pool {
@@ -84,23 +90,22 @@ pub async fn ingest_document(
     }
 
     // Use fallback skeleton (no LLM call for structure extraction yet)
-    let skeleton = body.skeleton.map(|s| {
-        serde_json::from_value::<DocSkeleton>(s).ok()
-    }).flatten();
+    let skeleton = body
+        .skeleton
+        .and_then(|s| serde_json::from_value::<DocSkeleton>(s).ok());
 
     let result = pipeline
         .ingest(&body.text, &agent_id, scope, tags, skeleton)
         .await
-        .map_err(|e| format!("Ingestion failed: {e}"))?;
+        .map_err(|e| ApiError::Internal(format!("Ingestion failed: {e}")))?;
 
     state.audit.record(
-        AuditEventBuilder::new(AuditEventType::Ingest, agent_id.as_str().to_owned())
-            .details(serde_json::json!({
-                "action": "ingest_document",
-                "chunks_created": result.chunks_created,
-                "chunks_stored": result.chunks_stored,
-                "total_ms": result.total_ms,
-            })),
+        AuditEventBuilder::new(AuditEventType::Ingest, &agent_id).details(serde_json::json!({
+            "action": "ingest_document",
+            "chunks_created": result.chunks_created,
+            "chunks_stored": result.chunks_stored,
+            "total_ms": result.total_ms,
+        })),
     );
 
     let chunks: Vec<ChunkDetailResponse> = result
@@ -140,7 +145,7 @@ pub async fn ingest_document(
 pub struct IngestRequest {
     /// The full document text to ingest.
     pub text: String,
-    /// Agent to own the ingested memories. Default: "coder".
+    /// Agent to own the ingested memories (required).
     pub agent_id: Option<String>,
     /// Scope: "private" (default) or "shared".
     pub scope: Option<String>,
@@ -181,16 +186,15 @@ pub struct MultimodalIngestRequest {
 pub async fn ingest_multimodal(
     State(state): State<Arc<AppState>>,
     Json(body): Json<MultimodalIngestRequest>,
-) -> Result<Json<MultimodalIngestResponse>, String> {
+) -> Result<Json<MultimodalIngestResponse>, ApiError> {
     let start = Instant::now();
 
-    let pool = state
-        .model_pool
-        .as_ref()
-        .ok_or_else(|| "Model pool not available (GEMINI_API_KEY not set)".to_owned())?;
+    let pool = state.model_pool.as_ref().ok_or_else(|| {
+        ApiError::Internal("Model pool not available (GEMINI_API_KEY not set)".into())
+    })?;
 
     let agent_id = AgentId::from_str(&body.agent_id)
-        .map_err(|e| format!("Invalid agent_id: {e}"))?;
+        .map_err(|e| ApiError::BadRequest(format!("Invalid agent_id: {e}")))?;
 
     let scope = match body.scope.as_deref() {
         Some("shared") => IsolationScope::Shared,
@@ -200,18 +204,14 @@ pub async fn ingest_multimodal(
     let tags = body.tags.unwrap_or_default();
 
     // Determine modality and process based on MIME type prefix.
-    let media_type = body
-        .mime_type
-        .split('/')
-        .next()
-        .unwrap_or("");
+    let media_type = body.mime_type.split('/').next().unwrap_or("");
 
     let (content_text, vector, modality) = match media_type {
         "image" => {
             let vec = pool
                 .embed_image(&body.data, &body.mime_type)
                 .await
-                .map_err(|e| format!("Image embedding failed: {e}"))?;
+                .map_err(|e| ApiError::Internal(format!("Image embedding failed: {e}")))?;
             let desc = body
                 .description
                 .unwrap_or_else(|| "Image content".to_owned());
@@ -221,11 +221,14 @@ pub async fn ingest_multimodal(
             let (text, vec) = pool
                 .embed_audio(&body.data, &body.mime_type)
                 .await
-                .map_err(|e| format!("Audio processing failed: {e}"))?;
+                .map_err(|e| ApiError::Internal(format!("Audio processing failed: {e}")))?;
             (text, vec, Modality::Audio)
         }
         _ => {
-            return Err(format!("Unsupported mime type: {}", body.mime_type));
+            return Err(ApiError::BadRequest(format!(
+                "Unsupported mime type: {}",
+                body.mime_type
+            )));
         }
     };
 
@@ -251,29 +254,25 @@ pub async fn ingest_multimodal(
         .vector
         .insert(&entry)
         .await
-        .map_err(|e| format!("Vector store insert failed: {e}"))?;
+        .map_err(|e| ApiError::Internal(format!("Vector store insert failed: {e}")))?;
 
     // Store raw file in L4 (raw storage).
     let raw_bytes = base64_decode(&body.data)
-        .map_err(|e| format!("Invalid base64 data: {e}"))?;
+        .map_err(|e| ApiError::BadRequest(format!("Invalid base64 data: {e}")))?;
     let extension = mime_extension(&body.mime_type);
-    let filename = format!("{}.{}", memory_id, extension);
-    let _ = state
-        .files
-        .store(&agent_id, &filename, &raw_bytes)
-        .await;
+    let filename = format!("{memory_id}.{extension}");
+    let _ = state.files.store(&agent_id, &filename, &raw_bytes).await;
 
     let latency_ms = start.elapsed().as_millis() as u64;
 
     state.audit.record(
-        AuditEventBuilder::new(AuditEventType::Ingest, agent_id.as_str().to_owned())
-            .details(serde_json::json!({
-                "action": "ingest_multimodal",
-                "mime_type": body.mime_type,
-                "modality": modality.display_name(),
-                "memory_id": memory_id,
-                "latency_ms": latency_ms,
-            })),
+        AuditEventBuilder::new(AuditEventType::Ingest, &agent_id).details(serde_json::json!({
+            "action": "ingest_multimodal",
+            "mime_type": body.mime_type,
+            "modality": modality.display_name(),
+            "memory_id": memory_id,
+            "latency_ms": latency_ms,
+        })),
     );
 
     Ok(Json(MultimodalIngestResponse {

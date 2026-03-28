@@ -75,6 +75,7 @@ pub fn compute_effective_importance(
 ) -> f32 {
     // Recency boost: exponential decay based on time since last access.
     let recency = if let Some(last) = last_accessed_at {
+        #[allow(clippy::cast_precision_loss)] // seconds since access fits well within f64 mantissa
         let days_ago = (Utc::now() - last).num_seconds() as f64 / 86_400.0;
         let half_life = config.recency_half_life_days;
         (0.5_f64.powf(days_ago / half_life)) as f32
@@ -84,6 +85,7 @@ pub fn compute_effective_importance(
 
     // Frequency boost: logarithmic (diminishing returns).
     let frequency = if access_count > 0 {
+        #[allow(clippy::cast_precision_loss)] // access_count is small enough for f64
         let log_val = (access_count as f64 + 1.0).log(config.frequency_log_base);
         (log_val as f32).min(1.0) * config.frequency_weight
     } else {
@@ -91,12 +93,13 @@ pub fn compute_effective_importance(
     };
 
     // Graph centrality: bonus for being a hub node.
+    #[allow(clippy::cast_precision_loss)] // graph_in_degree is small
     let centrality = (graph_in_degree as f32 * 0.05).min(config.centrality_weight);
 
     // Cross-agent bonus: referenced by multiple agents.
+    #[allow(clippy::cast_precision_loss)] // cross_agent_count is small
     let cross_agent = if cross_agent_count > 1 {
-        ((cross_agent_count - 1) as f32 * config.cross_agent_bonus)
-            .min(config.cross_agent_max)
+        ((cross_agent_count - 1) as f32 * config.cross_agent_bonus).min(config.cross_agent_max)
     } else {
         0.0
     };
@@ -159,9 +162,9 @@ mod tests {
     fn high_base_recent_access_yields_high_score() {
         let now = Utc::now();
         let score = compute_effective_importance(
-            0.9,             // high base
-            10,              // accessed 10 times
-            Some(now),       // just accessed
+            0.9,       // high base
+            10,        // accessed 10 times
+            Some(now), // just accessed
             0,
             0,
             None,
@@ -174,15 +177,7 @@ mod tests {
     #[test]
     fn old_access_decays_recency() {
         let old = Utc::now() - Duration::days(28); // 4 half-lives at 7-day half-life
-        let score = compute_effective_importance(
-            1.0,
-            0,
-            Some(old),
-            0,
-            0,
-            None,
-            &cfg(),
-        );
+        let score = compute_effective_importance(1.0, 0, Some(old), 0, 0, None, &cfg());
         // recency ~ 0.5^4 = 0.0625, so score ~ 0.0625
         assert!(score < 0.15, "score was {score}");
     }
@@ -205,12 +200,8 @@ mod tests {
     #[test]
     fn frequency_adds_bonus() {
         let now = Utc::now();
-        let score_no_access = compute_effective_importance(
-            0.5, 0, Some(now), 0, 0, None, &cfg(),
-        );
-        let score_many = compute_effective_importance(
-            0.5, 100, Some(now), 0, 0, None, &cfg(),
-        );
+        let score_no_access = compute_effective_importance(0.5, 0, Some(now), 0, 0, None, &cfg());
+        let score_many = compute_effective_importance(0.5, 100, Some(now), 0, 0, None, &cfg());
         assert!(
             score_many > score_no_access,
             "many={score_many} should be > none={score_no_access}"
@@ -220,12 +211,8 @@ mod tests {
     #[test]
     fn cross_agent_adds_bonus() {
         let now = Utc::now();
-        let score_single = compute_effective_importance(
-            0.5, 0, Some(now), 0, 1, None, &cfg(),
-        );
-        let score_multi = compute_effective_importance(
-            0.5, 0, Some(now), 0, 4, None, &cfg(),
-        );
+        let score_single = compute_effective_importance(0.5, 0, Some(now), 0, 1, None, &cfg());
+        let score_multi = compute_effective_importance(0.5, 0, Some(now), 0, 4, None, &cfg());
         assert!(
             score_multi > score_single,
             "multi={score_multi} should be > single={score_single}"
@@ -235,12 +222,9 @@ mod tests {
     #[test]
     fn negative_feedback_lowers_score() {
         let now = Utc::now();
-        let score_neutral = compute_effective_importance(
-            0.5, 0, Some(now), 0, 0, None, &cfg(),
-        );
-        let score_negative = compute_effective_importance(
-            0.5, 0, Some(now), 0, 0, Some(-1.0), &cfg(),
-        );
+        let score_neutral = compute_effective_importance(0.5, 0, Some(now), 0, 0, None, &cfg());
+        let score_negative =
+            compute_effective_importance(0.5, 0, Some(now), 0, 0, Some(-1.0), &cfg());
         assert!(
             score_negative < score_neutral,
             "negative={score_negative} should be < neutral={score_neutral}"
@@ -251,14 +235,18 @@ mod tests {
     fn result_is_clamped_to_unit_range() {
         // Extremely high signals
         let high = compute_effective_importance(
-            1.0, 1_000_000, Some(Utc::now()), 100, 100, Some(1.0), &cfg(),
+            1.0,
+            1_000_000,
+            Some(Utc::now()),
+            100,
+            100,
+            Some(1.0),
+            &cfg(),
         );
         assert!(high <= 1.0, "score {high} exceeds 1.0");
 
         // Extremely negative feedback with low base
-        let low = compute_effective_importance(
-            0.0, 0, None, 0, 0, Some(-1.0), &cfg(),
-        );
+        let low = compute_effective_importance(0.0, 0, None, 0, 0, Some(-1.0), &cfg());
         assert!(low >= 0.0, "score {low} below 0.0");
     }
 }

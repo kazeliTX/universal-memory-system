@@ -90,11 +90,11 @@ impl QueryReshaper {
                 }
             }
 
-            if !cooc_ids.is_empty() {
+            if cooc_ids.is_empty() {
+                vec![0.0; dim]
+            } else {
                 let cooc_tags = self.tag_store.get_batch(&cooc_ids).await?;
                 weighted_centroid(&cooc_tags, &cooc_pmis, dim)
-            } else {
-                vec![0.0; dim]
             }
         } else {
             vec![0.0; dim]
@@ -125,11 +125,7 @@ impl QueryReshaper {
 ///
 /// Tags are matched to weights by position. If a tag lacks a vector or
 /// there are more weights than tags, the extra entries are skipped.
-fn weighted_centroid(
-    tags: &[umms_core::tag::Tag],
-    weights: &[f32],
-    dim: usize,
-) -> Vec<f32> {
+fn weighted_centroid(tags: &[umms_core::tag::Tag], weights: &[f32], dim: usize) -> Vec<f32> {
     let mut centroid = vec![0.0_f32; dim];
     let mut total_weight = 0.0_f32;
 

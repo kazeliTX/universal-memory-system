@@ -82,11 +82,7 @@ pub trait VectorStore: Send + Sync {
 
     /// Update the user feedback rating for importance scoring.
     /// `rating` must be in `[-1.0, 1.0]`.
-    async fn update_user_rating(
-        &self,
-        id: &MemoryId,
-        rating: Option<f32>,
-    ) -> Result<()>;
+    async fn update_user_rating(&self, id: &MemoryId, rating: Option<f32>) -> Result<()>;
 
     /// Count entries for an agent (optionally including shared).
     async fn count(&self, agent_id: &AgentId, include_shared: bool) -> Result<u64>;
@@ -197,10 +193,7 @@ pub trait KnowledgeGraphStore: Send + Sync {
 
     /// Batch-update edge weights. Used during consolidation to strengthen
     /// frequently co-accessed relationships.
-    async fn batch_update_edge_weights(
-        &self,
-        updates: &[(EdgeId, f32)],
-    ) -> Result<()>;
+    async fn batch_update_edge_weights(&self, updates: &[(EdgeId, f32)]) -> Result<()>;
 
     /// Find node pairs whose labels or embeddings are similar.
     /// Returns (node_a, node_b, similarity_score) tuples, ordered by similarity desc.
@@ -234,12 +227,7 @@ pub trait KnowledgeGraphStore: Send + Sync {
 #[async_trait]
 pub trait RawFileStore: Send + Sync {
     /// Store a file and return its storage path.
-    async fn store(
-        &self,
-        agent_id: &AgentId,
-        filename: &str,
-        data: &[u8],
-    ) -> Result<String>;
+    async fn store(&self, agent_id: &AgentId, filename: &str, data: &[u8]) -> Result<String>;
 
     /// Read a file by its storage path.
     async fn read(&self, path: &str) -> Result<Vec<u8>>;
@@ -346,7 +334,7 @@ pub trait AgentContextManager: Send + Sync {
     async fn switch(&self, from: &AgentId, to: &AgentId) -> Result<()>;
 }
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
 // Encoder (M2)
@@ -415,11 +403,7 @@ pub struct RetrievalLatency {
 #[async_trait]
 pub trait Retriever: Send + Sync {
     /// Execute the full retrieval pipeline.
-    async fn retrieve(
-        &self,
-        query: &str,
-        agent_id: &AgentId,
-    ) -> Result<RetrievalResult>;
+    async fn retrieve(&self, query: &str, agent_id: &AgentId) -> Result<RetrievalResult>;
 
     /// Recall only (skip rerank and diffusion). Useful for testing.
     async fn recall_only(

@@ -50,10 +50,7 @@ pub enum StorageError {
     },
 
     #[error("Failed to read memory {memory_id}: {reason}")]
-    ReadFailed {
-        memory_id: MemoryId,
-        reason: String,
-    },
+    ReadFailed { memory_id: MemoryId, reason: String },
 
     #[error("Memory entry not found: {0}")]
     NotFound(MemoryId),

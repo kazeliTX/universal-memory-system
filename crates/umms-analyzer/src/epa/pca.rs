@@ -146,12 +146,7 @@ fn power_iteration(
 }
 
 /// Rayleigh quotient: v^T C v where C is the weighted covariance.
-fn rayleigh_quotient(
-    centered: &[Vec<f32>],
-    weights: &[f32],
-    total_weight: f32,
-    v: &[f32],
-) -> f32 {
+fn rayleigh_quotient(centered: &[Vec<f32>], weights: &[f32], total_weight: f32, v: &[f32]) -> f32 {
     let mut result = 0.0_f32;
     for (p, &w) in centered.iter().zip(weights.iter()) {
         let dot: f32 = p.iter().zip(v.iter()).map(|(a, b)| a * b).sum();
@@ -171,7 +166,7 @@ fn deflate(centered: &mut [Vec<f32>], eigenvec: &[f32]) {
 }
 
 /// L2 normalize a vector in place. If zero-length, sets to unit along dim 0.
-fn normalize(v: &mut Vec<f32>) {
+fn normalize(v: &mut [f32]) {
     let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
     if norm > 1e-12 {
         for val in v.iter_mut() {

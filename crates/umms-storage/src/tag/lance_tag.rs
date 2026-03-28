@@ -12,8 +12,8 @@ use arrow_array::{
 use arrow_schema::{DataType, Field, Schema};
 use chrono::{DateTime, Utc};
 use futures::TryStreamExt;
-use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::Table as LanceTable;
+use lancedb::query::{ExecutableQuery, QueryBase};
 use tokio::sync::Mutex;
 use tracing::instrument;
 
@@ -54,40 +54,37 @@ impl LanceTagStore {
             .await
             .map_err(lance_err)?;
 
-        let table = match db.open_table(TABLE_NAME).execute().await {
-            Ok(t) => {
-                let existing_schema = t.schema().await.map_err(lance_err)?;
-                let dim_matches = existing_schema
-                    .field_with_name("vector")
-                    .ok()
-                    .and_then(|f| match f.data_type() {
-                        DataType::FixedSizeList(_, size) => Some(*size as usize == vector_dim),
-                        _ => None,
-                    })
-                    .unwrap_or(false);
+        let table = if let Ok(t) = db.open_table(TABLE_NAME).execute().await {
+            let existing_schema = t.schema().await.map_err(lance_err)?;
+            let dim_matches = existing_schema
+                .field_with_name("vector")
+                .ok()
+                .and_then(|f| match f.data_type() {
+                    DataType::FixedSizeList(_, size) => Some(*size as usize == vector_dim),
+                    _ => None,
+                })
+                .unwrap_or(false);
 
-                if dim_matches {
-                    t
-                } else {
-                    tracing::warn!(
-                        expected = vector_dim,
-                        "Tag vector dimension mismatch — dropping and recreating table"
-                    );
-                    let _ = db.drop_table(TABLE_NAME, &[]).await;
-                    let batch = empty_batch(&schema, vector_dim)?;
-                    db.create_table(TABLE_NAME, vec![batch])
-                        .execute()
-                        .await
-                        .map_err(lance_err)?
-                }
-            }
-            Err(_) => {
+            if dim_matches {
+                t
+            } else {
+                tracing::warn!(
+                    expected = vector_dim,
+                    "Tag vector dimension mismatch — dropping and recreating table"
+                );
+                let _ = db.drop_table(TABLE_NAME, &[]).await;
                 let batch = empty_batch(&schema, vector_dim)?;
                 db.create_table(TABLE_NAME, vec![batch])
                     .execute()
                     .await
                     .map_err(lance_err)?
             }
+        } else {
+            let batch = empty_batch(&schema, vector_dim)?;
+            db.create_table(TABLE_NAME, vec![batch])
+                .execute()
+                .await
+                .map_err(lance_err)?
         };
 
         Ok(Self {
@@ -109,9 +106,7 @@ impl LanceTagStore {
     pub async fn upsert_tag(&self, tag: &Tag) -> Result<TagId> {
         // Delete existing entry if present (upsert semantics).
         let table = self.table.lock().await;
-        let _ = table
-            .delete(&format!("id = '{}'", tag.id.as_str()))
-            .await;
+        let _ = table.delete(&format!("id = '{}'", tag.id.as_str())).await;
 
         let batch = tags_to_batch(std::slice::from_ref(tag), &self.schema, self.vector_dim)?;
         table.add(vec![batch]).execute().await.map_err(lance_err)?;
@@ -129,9 +124,7 @@ impl LanceTagStore {
 
         // Delete all existing entries with matching IDs.
         for tag in tags {
-            let _ = table
-                .delete(&format!("id = '{}'", tag.id.as_str()))
-                .await;
+            let _ = table.delete(&format!("id = '{}'", tag.id.as_str())).await;
         }
 
         let batch = tags_to_batch(tags, &self.schema, self.vector_dim)?;
@@ -148,10 +141,7 @@ impl LanceTagStore {
         top_k: usize,
     ) -> Result<Vec<TagMatch>> {
         let filter = match agent_id {
-            Some(aid) => format!(
-                "(agent_id = '{}' OR agent_id = '')",
-                aid.as_str()
-            ),
+            Some(aid) => format!("(agent_id = '{}' OR agent_id = '')", aid.as_str()),
             None => String::new(),
         };
 
@@ -163,10 +153,7 @@ impl LanceTagStore {
         }
         let results = query.execute().await.map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
 
         let mut matches = Vec::new();
         for batch in &batches {
@@ -201,10 +188,7 @@ impl LanceTagStore {
 
         let mut filter_parts = vec![format!("canonical LIKE '%{canonical}%'")];
         if let Some(aid) = agent_id {
-            filter_parts.push(format!(
-                "(agent_id = '{}' OR agent_id = '')",
-                aid.as_str()
-            ));
+            filter_parts.push(format!("(agent_id = '{}' OR agent_id = '')", aid.as_str()));
         }
         let filter = filter_parts.join(" AND ");
 
@@ -217,10 +201,7 @@ impl LanceTagStore {
             .await
             .map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
 
         let mut all_tags = Vec::new();
         for batch in &batches {
@@ -234,10 +215,7 @@ impl LanceTagStore {
     /// Get all tags, optionally filtered by agent.
     pub async fn all_tags(&self, agent_id: Option<&AgentId>) -> Result<Vec<Tag>> {
         let filter = match agent_id {
-            Some(aid) => format!(
-                "(agent_id = '{}' OR agent_id = '')",
-                aid.as_str()
-            ),
+            Some(aid) => format!("(agent_id = '{}' OR agent_id = '')", aid.as_str()),
             None => String::new(),
         };
 
@@ -248,10 +226,7 @@ impl LanceTagStore {
         }
         let results = query.execute().await.map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
 
         let mut all_tags = Vec::new();
         for batch in &batches {
@@ -274,10 +249,7 @@ impl LanceTagStore {
             .await
             .map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
 
         for batch in &batches {
             let tags = batch_to_tags(batch, self.vector_dim)?;
@@ -305,10 +277,7 @@ impl LanceTagStore {
             .await
             .map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
 
         let mut all_tags = Vec::new();
         for batch in &batches {
@@ -329,7 +298,7 @@ impl LanceTagStore {
             Some(aid) => format!("agent_id = '{}'", aid.as_str()),
             None => "agent_id = ''".to_string(),
         };
-        let filter = format!("canonical = '{}' AND {}", canonical, agent_filter);
+        let filter = format!("canonical = '{canonical}' AND {agent_filter}");
 
         let table = self.table.lock().await;
         let results = table
@@ -340,10 +309,7 @@ impl LanceTagStore {
             .await
             .map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
 
         for batch in &batches {
             let tags = batch_to_tags(batch, self.vector_dim)?;
@@ -357,10 +323,7 @@ impl LanceTagStore {
     /// Count tags, optionally filtered by agent.
     pub async fn count(&self, agent_id: Option<&AgentId>) -> Result<u64> {
         let filter = match agent_id {
-            Some(aid) => format!(
-                "(agent_id = '{}' OR agent_id = '')",
-                aid.as_str()
-            ),
+            Some(aid) => format!("(agent_id = '{}' OR agent_id = '')", aid.as_str()),
             None => String::new(),
         };
 
@@ -371,10 +334,7 @@ impl LanceTagStore {
         }
         let results = query.execute().await.map_err(lance_err)?;
 
-        let batches: Vec<RecordBatch> = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(lance_err)?;
+        let batches: Vec<RecordBatch> = results.try_collect::<Vec<_>>().await.map_err(lance_err)?;
 
         let total: usize = batches.iter().map(RecordBatch::num_rows).sum();
         Ok(total as u64)
@@ -411,11 +371,7 @@ fn build_schema(vector_dim: usize) -> Schema {
 // ---------------------------------------------------------------------------
 
 /// Convert a slice of [`Tag`] to an Arrow [`RecordBatch`].
-fn tags_to_batch(
-    tags: &[Tag],
-    schema: &Arc<Schema>,
-    vector_dim: usize,
-) -> Result<RecordBatch> {
+fn tags_to_batch(tags: &[Tag], schema: &Arc<Schema>, vector_dim: usize) -> Result<RecordBatch> {
     let len = tags.len();
 
     let ids: Vec<&str> = tags.iter().map(|t| t.id.as_str()).collect();
@@ -436,7 +392,7 @@ fn tags_to_batch(
         if tag.vector.len() == vector_dim {
             flat_values.extend_from_slice(&tag.vector);
         } else {
-            flat_values.extend(std::iter::repeat(0.0_f32).take(vector_dim));
+            flat_values.extend(std::iter::repeat_n(0.0_f32, vector_dim));
         }
     }
     let values_array = Float32Array::from(flat_values);
@@ -460,16 +416,25 @@ fn tags_to_batch(
             Arc::new(StringArray::from(labels)) as ArrayRef,
             Arc::new(StringArray::from(canonicals)) as ArrayRef,
             Arc::new(StringArray::from(
-                agent_ids.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                agent_ids
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
             )) as ArrayRef,
             Arc::new(vector_list) as ArrayRef,
             Arc::new(Float32Array::from(importances)) as ArrayRef,
             Arc::new(UInt64Array::from(frequencies)) as ArrayRef,
             Arc::new(StringArray::from(
-                created.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                created
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
             )) as ArrayRef,
             Arc::new(StringArray::from(
-                updated.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                updated
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>(),
             )) as ArrayRef,
         ],
     )
@@ -551,8 +516,7 @@ fn batch_to_tags(batch: &RecordBatch, _vector_dim: usize) -> Result<Vec<Tag>> {
 
     let mut tags = Vec::with_capacity(n);
     for i in 0..n {
-        let id = TagId::from_str(ids.value(i))
-            .unwrap_or_else(|_| TagId::new());
+        let id = TagId::from_str(ids.value(i)).unwrap_or_else(|_| TagId::new());
         let label = labels.value(i).to_owned();
         let canonical = canonicals.value(i).to_owned();
 
@@ -571,18 +535,20 @@ fn batch_to_tags(batch: &RecordBatch, _vector_dim: usize) -> Result<Vec<Tag>> {
                 }
                 let values = vc.value(i);
                 let f32_arr = values.as_any().downcast_ref::<Float32Array>()?;
-                Some((0..f32_arr.len()).map(|j| f32_arr.value(j)).collect::<Vec<f32>>())
+                Some(
+                    (0..f32_arr.len())
+                        .map(|j| f32_arr.value(j))
+                        .collect::<Vec<f32>>(),
+                )
             })
             .unwrap_or_default();
 
         let importance = importances.value(i);
         let frequency = frequencies.value(i);
         let created_at = DateTime::parse_from_rfc3339(created_col.value(i))
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now());
+            .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc));
         let updated_at = DateTime::parse_from_rfc3339(updated_col.value(i))
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now());
+            .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc));
 
         tags.push(Tag {
             id,
@@ -621,7 +587,10 @@ mod tests {
 
     fn temp_db_path(suffix: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("umms_lance_tag_test_{suffix}_{}", uuid::Uuid::new_v4()));
+        p.push(format!(
+            "umms_lance_tag_test_{suffix}_{}",
+            uuid::Uuid::new_v4()
+        ));
         p
     }
 
@@ -691,7 +660,10 @@ mod tests {
 
         let query_vec = random_vector(8, 1); // Same seed = similar vector
         let agent_id = AgentId::from_str("agent-a").unwrap();
-        let results = store.search_by_vector(&query_vec, Some(&agent_id), 5).await.unwrap();
+        let results = store
+            .search_by_vector(&query_vec, Some(&agent_id), 5)
+            .await
+            .unwrap();
         assert!(!results.is_empty());
         assert!(results[0].similarity > 0.0);
     }
@@ -709,7 +681,10 @@ mod tests {
         store.upsert_batch_tags(&tags).await.unwrap();
 
         let agent_id = AgentId::from_str("agent-a").unwrap();
-        let found = store.find_by_label("rust", Some(&agent_id), 10).await.unwrap();
+        let found = store
+            .find_by_label("rust", Some(&agent_id), 10)
+            .await
+            .unwrap();
         assert_eq!(found.len(), 2);
     }
 

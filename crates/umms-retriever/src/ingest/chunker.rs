@@ -37,8 +37,8 @@ impl Default for ChunkerConfig {
 
 /// Protected region that should not be split across chunks.
 struct ProtectedRegion {
-    start: usize,
-    end: usize,
+    _start: usize,
+    _end: usize,
     placeholder: String,
     original: String,
 }
@@ -58,8 +58,8 @@ fn protect_regions(text: &str) -> (String, Vec<ProtectedRegion>) {
             let placeholder = format!("__CODE_BLOCK_{counter}__");
             counter += 1;
             regions.push(ProtectedRegion {
-                start,
-                end,
+                _start: start,
+                _end: end,
                 placeholder: placeholder.clone(),
                 original,
             });
@@ -80,8 +80,8 @@ fn protect_regions(text: &str) -> (String, Vec<ProtectedRegion>) {
         let placeholder = format!("__URL_{counter}__");
         counter += 1;
         regions.push(ProtectedRegion {
-            start,
-            end,
+            _start: start,
+            _end: end,
             placeholder: placeholder.clone(),
             original,
         });
@@ -129,6 +129,7 @@ pub fn chunk_text(text: &str, config: &ChunkerConfig) -> Vec<Chunk> {
 }
 
 /// Inner chunking logic operating on protected text.
+#[allow(clippy::assigning_clones)]
 fn chunk_text_inner(text: &str, config: &ChunkerConfig) -> Vec<Chunk> {
     if text.is_empty() {
         return Vec::new();
@@ -168,8 +169,8 @@ fn chunk_text_inner(text: &str, config: &ChunkerConfig) -> Vec<Chunk> {
 
             // Start new chunk with overlap from the end of previous
             let overlap_start = find_char_boundary(&current_text, config.overlap);
-            let overlap_text = find_word_boundary(&current_text[overlap_start..]);
-            current_text = overlap_text.to_owned();
+            let overlap_text = find_word_boundary(&current_text[overlap_start..]).to_owned();
+            current_text = overlap_text;
             chunk_start_offset = current_offset.saturating_sub(config.overlap);
         }
 
@@ -186,8 +187,9 @@ fn chunk_text_inner(text: &str, config: &ChunkerConfig) -> Vec<Chunk> {
                         char_offset: chunk_start_offset,
                     });
                     let overlap_start = find_char_boundary(&current_text, config.overlap);
-                    let overlap_text = find_word_boundary(&current_text[overlap_start..]);
-                    current_text = overlap_text.to_owned();
+                    let overlap_text =
+                        find_word_boundary(&current_text[overlap_start..]).to_owned();
+                    current_text = overlap_text;
                     chunk_start_offset = current_offset.saturating_sub(config.overlap);
                 }
                 if !current_text.is_empty() {
@@ -196,10 +198,10 @@ fn chunk_text_inner(text: &str, config: &ChunkerConfig) -> Vec<Chunk> {
                 current_text.push_str(sentence);
             }
         } else {
-            if !current_text.is_empty() {
-                current_text.push_str("\n\n");
-            } else {
+            if current_text.is_empty() {
                 chunk_start_offset = current_offset;
+            } else {
+                current_text.push_str("\n\n");
             }
             current_text.push_str(para_trimmed);
         }
@@ -315,11 +317,7 @@ mod tests {
 
     #[test]
     fn respects_paragraph_boundaries() {
-        let text = format!(
-            "{}\n\n{}",
-            "Short paragraph one.",
-            "Short paragraph two."
-        );
+        let text = format!("{}\n\n{}", "Short paragraph one.", "Short paragraph two.");
         let config = ChunkerConfig {
             target_size: 5000,
             overlap: 0,

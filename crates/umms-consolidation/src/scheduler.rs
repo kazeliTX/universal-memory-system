@@ -69,6 +69,7 @@ impl ConsolidationScheduler {
     }
 
     /// Create a scheduler from full config (decay + graph evolution + wkd + promotion).
+    #[allow(clippy::needless_pass_by_value)]
     pub fn from_config(
         decay_config: DecayConfig,
         graph_evo_config: GraphEvolutionConfig,
@@ -145,7 +146,10 @@ impl ConsolidationScheduler {
         );
 
         // Phase 2: WKD compression
-        let wkd_result = self.wkd_engine.compress(vector_store, agent_id, None).await?;
+        let wkd_result = self
+            .wkd_engine
+            .compress(vector_store, agent_id, None)
+            .await?;
         info!(
             clusters = wkd_result.clusters_found,
             distilled = wkd_result.distilled_created,
@@ -153,10 +157,7 @@ impl ConsolidationScheduler {
         );
 
         // Phase 3: Graph evolution
-        let mut evolution_result = self
-            .graph_evolution
-            .evolve(graph, Some(agent_id))
-            .await?;
+        let mut evolution_result = self.graph_evolution.evolve(graph, Some(agent_id)).await?;
 
         let edges_strengthened = self
             .graph_evolution
@@ -192,10 +193,7 @@ impl ConsolidationScheduler {
             timestamp: Utc::now(),
         };
 
-        info!(
-            total_ms,
-            "Consolidation cycle complete"
-        );
+        info!(total_ms, "Consolidation cycle complete");
 
         Ok(report)
     }
@@ -207,10 +205,8 @@ mod tests {
 
     #[test]
     fn scheduler_creates_with_defaults() {
-        let scheduler = ConsolidationScheduler::new(
-            DecayConfig::default(),
-            PromotionConfig::default(),
-        );
+        let scheduler =
+            ConsolidationScheduler::new(DecayConfig::default(), PromotionConfig::default());
 
         // Just verify it constructs without panic.
         let _ = scheduler.decay_engine();

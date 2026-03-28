@@ -5,11 +5,12 @@
 //! tool, not a compliance system.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use umms_core::types::AgentId;
 
 /// Default ring buffer capacity.
 const DEFAULT_CAPACITY: usize = 10_000;
@@ -97,10 +98,30 @@ pub struct AuditEventBuilder {
 }
 
 impl AuditEventBuilder {
-    pub fn new(event_type: AuditEventType, agent_id: impl Into<String>) -> Self {
+    /// Create a builder for an agent-scoped audit event.
+    ///
+    /// Use [`new_system`](Self::new_system) for system-level events that don't
+    /// belong to a specific agent (e.g. encoder, shared-layer operations).
+    pub fn new(event_type: AuditEventType, agent_id: &AgentId) -> Self {
         Self {
             event_type,
-            agent_id: agent_id.into(),
+            agent_id: agent_id.as_str().to_owned(),
+            memory_id: None,
+            node_id: None,
+            layer: None,
+            details: serde_json::Value::Null,
+        }
+    }
+
+    /// Create a builder for a system-level audit event.
+    ///
+    /// The `label` identifies the subsystem (e.g. `"_encoder"`, `"_shared"`).
+    /// For agent-scoped events, prefer [`new`](Self::new) which requires a
+    /// typed `AgentId`.
+    pub fn new_system(event_type: AuditEventType, label: &str) -> Self {
+        Self {
+            event_type,
+            agent_id: label.to_owned(),
             memory_id: None,
             node_id: None,
             layer: None,
@@ -154,9 +175,17 @@ impl AuditFilter {
         }
     }
 
+    /// Filter by a typed `AgentId`.
     #[must_use]
-    pub fn agent(mut self, agent_id: impl Into<String>) -> Self {
-        self.agent_id = Some(agent_id.into());
+    pub fn agent(mut self, agent_id: &AgentId) -> Self {
+        self.agent_id = Some(agent_id.as_str().to_owned());
+        self
+    }
+
+    /// Filter by a raw label string (for system-level audit entries).
+    #[must_use]
+    pub fn agent_label(mut self, label: &str) -> Self {
+        self.agent_id = Some(label.to_owned());
         self
     }
 
@@ -274,19 +303,27 @@ impl Default for AuditLog {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
+
+    fn test_agent(name: &str) -> AgentId {
+        AgentId::from_str(name).expect("valid test agent id")
+    }
 
     #[test]
     fn record_and_query() {
         let log = AuditLog::new();
+        let agent_a = test_agent("agent-a");
+        let agent_b = test_agent("agent-b");
 
         log.record(
-            AuditEventBuilder::new(AuditEventType::VectorInsert, "agent-a")
+            AuditEventBuilder::new(AuditEventType::VectorInsert, &agent_a)
                 .memory_id("mem-1")
                 .layer("L2"),
         );
         log.record(
-            AuditEventBuilder::new(AuditEventType::CachePut, "agent-b")
+            AuditEventBuilder::new(AuditEventType::CachePut, &agent_b)
                 .memory_id("mem-2")
                 .layer("L0"),
         );
@@ -299,7 +336,7 @@ mod tests {
         assert_eq!(all[0].agent_id, "agent-b"); // newest first
 
         // Filter by agent
-        let filtered = log.query(&AuditFilter::new().agent("agent-a"));
+        let filtered = log.query(&AuditFilter::new().agent(&agent_a));
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].event_type, AuditEventType::VectorInsert);
 
@@ -310,14 +347,26 @@ mod tests {
     }
 
     #[test]
+    fn record_and_query_system_events() {
+        let log = AuditLog::new();
+
+        log.record(
+            AuditEventBuilder::new_system(AuditEventType::Encode, "_encoder")
+                .details(serde_json::json!({"action": "encode_text"})),
+        );
+
+        let filtered = log.query(&AuditFilter::new().agent_label("_encoder"));
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].agent_id, "_encoder");
+    }
+
+    #[test]
     fn ring_buffer_evicts_oldest() {
         let log = AuditLog::with_capacity(3);
 
         for i in 0..5 {
-            log.record(AuditEventBuilder::new(
-                AuditEventType::CachePut,
-                format!("agent-{i}"),
-            ));
+            let agent = test_agent(&format!("agent-{i}"));
+            log.record(AuditEventBuilder::new(AuditEventType::CachePut, &agent));
         }
 
         assert_eq!(log.len(), 3);
@@ -332,10 +381,8 @@ mod tests {
     fn pagination_with_offset() {
         let log = AuditLog::new();
         for i in 0..10 {
-            log.record(AuditEventBuilder::new(
-                AuditEventType::VectorInsert,
-                format!("agent-{i}"),
-            ));
+            let agent = test_agent(&format!("agent-{i}"));
+            log.record(AuditEventBuilder::new(AuditEventType::VectorInsert, &agent));
         }
 
         let page = log.query(&AuditFilter::new().offset(3).limit(2));
@@ -348,8 +395,10 @@ mod tests {
     #[test]
     fn monotonic_ids() {
         let log = AuditLog::new();
-        log.record(AuditEventBuilder::new(AuditEventType::CachePut, "a"));
-        log.record(AuditEventBuilder::new(AuditEventType::CachePut, "b"));
+        let a = test_agent("a");
+        let b = test_agent("b");
+        log.record(AuditEventBuilder::new(AuditEventType::CachePut, &a));
+        log.record(AuditEventBuilder::new(AuditEventType::CachePut, &b));
 
         let events = log.query(&AuditFilter::new().limit(100));
         assert!(events[0].id > events[1].id); // newest has higher id

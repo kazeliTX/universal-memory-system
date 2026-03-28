@@ -31,15 +31,11 @@ pub async fn cache_entries(
     }
 
     state.audit.record(
-        AuditEventBuilder::new(AuditEventType::CacheGet, &agent_id)
+        AuditEventBuilder::new(AuditEventType::CacheGet, &aid)
             .details(serde_json::json!({"l0": l0.len(), "l1": l1.len()})),
     );
 
-    Ok(Json(CacheEntriesResponse {
-        agent_id,
-        l0,
-        l1,
-    }))
+    Ok(Json(CacheEntriesResponse { agent_id, l0, l1 }))
 }
 
 /// Pagination params for vector listing.
@@ -68,7 +64,10 @@ pub async fn vector_entries(
 ) -> Result<Json<VectorEntriesResponse>, ApiError> {
     let aid = parse_agent_id(&agent_id)?;
 
-    let total = state.vector.count(&aid, params.include_shared).await
+    let total = state
+        .vector
+        .count(&aid, params.include_shared)
+        .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let entries = state
@@ -165,39 +164,8 @@ pub async fn rate_memory(
 // Error handling
 // ---------------------------------------------------------------------------
 
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-
-/// Lightweight API error type.
-///
-/// Converts to appropriate HTTP status codes. Does NOT expose internal details
-/// in production — the `Internal` variant logs the real error and returns a
-/// generic message to the caller.
-#[derive(Debug)]
-pub enum ApiError {
-    BadRequest(String),
-    NotFound(String),
-    Internal(String),
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let (status, message) = match self {
-            Self::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            Self::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            Self::Internal(msg) => {
-                tracing::error!(error = %msg, "internal API error");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal server error".to_owned(),
-                )
-            }
-        };
-
-        let body = serde_json::json!({ "error": message });
-        (status, Json(body)).into_response()
-    }
-}
+// Re-export ApiError from the shared error module for backward compatibility.
+pub use crate::error::ApiError;
 
 /// Parse and validate an agent ID from a path parameter.
 fn parse_agent_id(raw: &str) -> Result<AgentId, ApiError> {

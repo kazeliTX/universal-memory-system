@@ -49,7 +49,6 @@ impl AppConfig {
             .unwrap_or_else(|_| ".".to_owned());
 
         Self {
-
             data_dir: PathBuf::from(home).join(".umms").join("dev"),
             vector_dim: 3072,
             audit_capacity: 10_000,
@@ -109,6 +108,7 @@ impl AppState {
     ///
     /// Creates directories as needed. Fails fast on any backend init error —
     /// there is no point in running with a broken storage layer.
+    #[allow(clippy::too_many_lines)]
     pub async fn new(config: AppConfig) -> Result<Self, UmmsError> {
         std::fs::create_dir_all(&config.data_dir)
             .map_err(|e| UmmsError::Config(format!("cannot create data dir: {e}")))?;
@@ -118,26 +118,23 @@ impl AppState {
         let umms_cfg = config::load_config();
         let cache = MokaMemoryCache::from_config(&umms_cfg.cache.l0, &umms_cfg.cache.l1);
 
-        let vector = Arc::new(LanceVectorStore::new(
-            config.data_dir.join("lance").to_str().ok_or_else(|| {
-                UmmsError::Config("data_dir contains non-UTF-8 characters".into())
-            })?,
-            config.vector_dim,
-        )
-        .await?);
+        let vector = Arc::new(
+            LanceVectorStore::new(
+                config.data_dir.join("lance").to_str().ok_or_else(|| {
+                    UmmsError::Config("data_dir contains non-UTF-8 characters".into())
+                })?,
+                config.vector_dim,
+            )
+            .await?,
+        );
 
-        let graph: Arc<dyn KnowledgeGraphStore> =
-            if umms_cfg.storage.graph_backend == "sqlite" {
-                tracing::info!("using SQLite graph backend");
-                Arc::new(SqliteGraphStore::new(
-                    &config.data_dir.join("graph.sqlite"),
-                )?)
-            } else {
-                tracing::info!("using CozoDB graph backend");
-                Arc::new(CozoGraphStore::new(
-                    config.data_dir.join("graph.cozo"),
-                )?)
-            };
+        let graph: Arc<dyn KnowledgeGraphStore> = if umms_cfg.storage.graph_backend == "sqlite" {
+            tracing::info!("using SQLite graph backend");
+            Arc::new(SqliteGraphStore::new(config.data_dir.join("graph.sqlite"))?)
+        } else {
+            tracing::info!("using CozoDB graph backend");
+            Arc::new(CozoGraphStore::new(config.data_dir.join("graph.cozo"))?)
+        };
 
         let files = LocalFileStore::new(config.data_dir.join("files")).await?;
 
@@ -153,14 +150,13 @@ impl AppState {
             let pool_config = &umms_config.model_pool;
             match ModelPool::from_config(pool_config) {
                 Ok(pool) if !pool.is_empty() => {
-                    tracing::info!(
-                        models = pool.models().len(),
-                        "Model pool ready"
-                    );
+                    tracing::info!(models = pool.models().len(), "Model pool ready");
                     Some(Arc::new(pool))
                 }
                 Ok(_) => {
-                    tracing::warn!("Model pool has no available providers. Generation API will be disabled.");
+                    tracing::warn!(
+                        "Model pool has no available providers. Generation API will be disabled."
+                    );
                     None
                 }
                 Err(e) => {
@@ -213,46 +209,42 @@ impl AppState {
 
         // Persona store (M7)
         let persona_store = Arc::new(
-            PersonaStore::new(config.data_dir.join("personas.sqlite")).map_err(|e| {
-                UmmsError::Config(format!("persona store init failed: {e}"))
-            })?,
+            PersonaStore::new(config.data_dir.join("personas.sqlite"))
+                .map_err(|e| UmmsError::Config(format!("persona store init failed: {e}")))?,
         );
 
         // Seed/update default personas — ensures system_prompt is always current
         {
             for persona in umms_persona::default_personas() {
-                let existing = persona_store
-                    .get(&persona.agent_id)
-                    .await
-                    .ok()
-                    .flatten();
+                let existing = persona_store.get(&persona.agent_id).await.ok().flatten();
                 let should_upsert = match &existing {
                     None => true,
-                    Some(e) => e.system_prompt.is_empty() || !e.system_prompt.contains(&persona.name),
+                    Some(e) => {
+                        e.system_prompt.is_empty() || !e.system_prompt.contains(&persona.name)
+                    }
                 };
                 if should_upsert {
-                    tracing::info!(agent_id = persona.agent_id.as_str(), "seeding/updating default persona");
+                    tracing::info!(
+                        agent_id = persona.agent_id.as_str(),
+                        "seeding/updating default persona"
+                    );
                     let _ = persona_store.save(&persona).await;
                 }
             }
         }
 
         // Diary store
-        let diary_db = config
-            .data_dir
-            .join(&umms_config.diary.db);
+        let diary_db = config.data_dir.join(&umms_config.diary.db);
         let diary_store = Arc::new(
-            DiaryStore::new(&diary_db).map_err(|e| {
-                UmmsError::Config(format!("diary store init failed: {e}"))
-            })?,
+            DiaryStore::new(&diary_db)
+                .map_err(|e| UmmsError::Config(format!("diary store init failed: {e}")))?,
         );
         tracing::info!("Diary store initialised");
 
         // Session store
         let session_store = Arc::new(
-            SessionStore::new(config.data_dir.join("sessions.sqlite")).map_err(|e| {
-                UmmsError::Config(format!("session store init failed: {e}"))
-            })?,
+            SessionStore::new(config.data_dir.join("sessions.sqlite"))
+                .map_err(|e| UmmsError::Config(format!("session store init failed: {e}")))?,
         );
         tracing::info!("Session store initialised");
 
@@ -261,9 +253,8 @@ impl AppState {
 
         // Prompt store (three-mode prompt system)
         let prompt_store = Arc::new(
-            PromptStore::new(config.data_dir.join("prompts.sqlite")).map_err(|e| {
-                UmmsError::Config(format!("prompt store init failed: {e}"))
-            })?,
+            PromptStore::new(config.data_dir.join("prompts.sqlite"))
+                .map_err(|e| UmmsError::Config(format!("prompt store init failed: {e}")))?,
         );
         tracing::info!("Prompt store initialised");
 
@@ -283,11 +274,8 @@ impl AppState {
             );
             // Attach EPA if tag store is available
             if let Some(ref ts) = tag_store {
-                pipeline = pipeline.with_epa(
-                    Arc::clone(ts),
-                    umms_config.epa,
-                    umms_config.reshaping,
-                );
+                pipeline =
+                    pipeline.with_epa(Arc::clone(ts), umms_config.epa, umms_config.reshaping);
             }
             pipeline
         });

@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use umms_core::types::*;
 
-use crate::handlers::memory::ApiError;
+use crate::error::ApiError;
 use crate::response::*;
 use crate::state::AppState;
 

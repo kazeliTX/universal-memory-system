@@ -33,9 +33,7 @@ async fn build_test_app() -> (axum::Router, tempfile::TempDir) {
         audit_capacity: 1_000,
     };
 
-    let state = AppState::new(config)
-        .await
-        .expect("AppState::new failed");
+    let state = AppState::new(config).await.expect("AppState::new failed");
     let state = Arc::new(state);
 
     let router = umms_api::build_router(state);
@@ -129,9 +127,18 @@ async fn test_seed_and_clear() {
     assert_eq!(response.status(), StatusCode::OK);
     let seed_json = body_json(response).await;
     assert_eq!(seed_json["seeded"], true);
-    assert!(seed_json["memories"].as_u64().unwrap() > 0, "seed should create memories");
-    assert!(seed_json["nodes"].as_u64().unwrap() > 0, "seed should create graph nodes");
-    assert!(seed_json["edges"].as_u64().unwrap() > 0, "seed should create graph edges");
+    assert!(
+        seed_json["memories"].as_u64().unwrap() > 0,
+        "seed should create memories"
+    );
+    assert!(
+        seed_json["nodes"].as_u64().unwrap() > 0,
+        "seed should create graph nodes"
+    );
+    assert!(
+        seed_json["edges"].as_u64().unwrap() > 0,
+        "seed should create graph edges"
+    );
 
     // Stats should now show data
     let response = app

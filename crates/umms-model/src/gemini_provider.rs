@@ -69,7 +69,10 @@ struct CandidatePart {
 struct EmbedContentRequest<'a> {
     model: &'a str,
     content: ContentPayload<'a>,
-    #[serde(rename = "outputDimensionality", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "outputDimensionality",
+        skip_serializing_if = "Option::is_none"
+    )]
     output_dimensionality: Option<usize>,
 }
 
@@ -179,6 +182,13 @@ impl std::fmt::Debug for GeminiProvider {
             .field("model_name", &self.model_name)
             .field("tasks", &self.tasks)
             .field("api_key", &"***")
+            .field("dimension", &self.dimension)
+            .field("max_tokens", &self.max_tokens)
+            .field("timeout", &self.timeout)
+            .field("max_retries", &self.max_retries)
+            .field("client", &self.client)
+            .field("max_batch_size", &self.max_batch_size)
+            .field("stats", &self.stats)
             .finish()
     }
 }
@@ -197,15 +207,12 @@ impl GeminiProvider {
 
         let timeout = Duration::from_millis(config.timeout_ms.unwrap_or(10_000));
 
-        let client = Client::builder()
-            .timeout(timeout)
-            .build()
-            .map_err(|e| {
-                UmmsError::Encoding(EncodingError::ApiCallFailed {
-                    provider: "gemini".into(),
-                    reason: format!("Failed to build HTTP client: {e}"),
-                })
-            })?;
+        let client = Client::builder().timeout(timeout).build().map_err(|e| {
+            UmmsError::Encoding(EncodingError::ApiCallFailed {
+                provider: "gemini".into(),
+                reason: format!("Failed to build HTTP client: {e}"),
+            })
+        })?;
 
         let tasks: Vec<ModelTask> = config
             .tasks
@@ -255,7 +262,11 @@ impl GeminiProvider {
             if attempt > 0 {
                 self.stats.total_retries.fetch_add(1, Ordering::Relaxed);
                 let delay = Duration::from_millis(100 * 2u64.pow(attempt - 1));
-                warn!(attempt, delay_ms = delay.as_millis(), "Retrying Gemini embed API");
+                warn!(
+                    attempt,
+                    delay_ms = delay.as_millis(),
+                    "Retrying Gemini embed API"
+                );
                 tokio::time::sleep(delay).await;
             }
 
@@ -285,13 +296,12 @@ impl GeminiProvider {
 
                     let status = resp.status();
                     let err_body = resp.text().await.unwrap_or_default();
-                    let reason = if let Ok(ge) =
-                        serde_json::from_str::<GeminiErrorResponse>(&err_body)
-                    {
-                        format!("{} ({})", ge.error.message, ge.error.status)
-                    } else {
-                        format!("HTTP {status}: {err_body}")
-                    };
+                    let reason =
+                        if let Ok(ge) = serde_json::from_str::<GeminiErrorResponse>(&err_body) {
+                            format!("{} ({})", ge.error.message, ge.error.status)
+                        } else {
+                            format!("HTTP {status}: {err_body}")
+                        };
 
                     if status.as_u16() == 429 || status.is_server_error() {
                         last_err = Some(reason);
@@ -310,7 +320,6 @@ impl GeminiProvider {
                     } else {
                         last_err = Some(format!("Network error: {e}"));
                     }
-                    continue;
                 }
             }
         }
@@ -355,7 +364,11 @@ impl GeminiProvider {
             if attempt > 0 {
                 self.stats.total_retries.fetch_add(1, Ordering::Relaxed);
                 let delay = Duration::from_millis(100 * 2u64.pow(attempt - 1));
-                warn!(attempt, delay_ms = delay.as_millis(), "Retrying batch Gemini API");
+                warn!(
+                    attempt,
+                    delay_ms = delay.as_millis(),
+                    "Retrying batch Gemini API"
+                );
                 tokio::time::sleep(delay).await;
             }
 
@@ -385,13 +398,12 @@ impl GeminiProvider {
 
                     let status = resp.status();
                     let err_body = resp.text().await.unwrap_or_default();
-                    let reason = if let Ok(ge) =
-                        serde_json::from_str::<GeminiErrorResponse>(&err_body)
-                    {
-                        format!("{} ({})", ge.error.message, ge.error.status)
-                    } else {
-                        format!("HTTP {status}: {err_body}")
-                    };
+                    let reason =
+                        if let Ok(ge) = serde_json::from_str::<GeminiErrorResponse>(&err_body) {
+                            format!("{} ({})", ge.error.message, ge.error.status)
+                        } else {
+                            format!("HTTP {status}: {err_body}")
+                        };
 
                     if status.as_u16() == 429 || status.is_server_error() {
                         last_err = Some(reason);
@@ -410,7 +422,6 @@ impl GeminiProvider {
                     } else {
                         last_err = Some(format!("Network error: {e}"));
                     }
-                    continue;
                 }
             }
         }
@@ -450,7 +461,11 @@ impl GeminiProvider {
             if attempt > 0 {
                 self.stats.total_retries.fetch_add(1, Ordering::Relaxed);
                 let delay = Duration::from_millis(100 * 2u64.pow(attempt - 1));
-                warn!(attempt, delay_ms = delay.as_millis(), "Retrying Gemini image embed API");
+                warn!(
+                    attempt,
+                    delay_ms = delay.as_millis(),
+                    "Retrying Gemini image embed API"
+                );
                 tokio::time::sleep(delay).await;
             }
 
@@ -480,13 +495,12 @@ impl GeminiProvider {
 
                     let status = resp.status();
                     let err_body = resp.text().await.unwrap_or_default();
-                    let reason = if let Ok(ge) =
-                        serde_json::from_str::<GeminiErrorResponse>(&err_body)
-                    {
-                        format!("{} ({})", ge.error.message, ge.error.status)
-                    } else {
-                        format!("HTTP {status}: {err_body}")
-                    };
+                    let reason =
+                        if let Ok(ge) = serde_json::from_str::<GeminiErrorResponse>(&err_body) {
+                            format!("{} ({})", ge.error.message, ge.error.status)
+                        } else {
+                            format!("HTTP {status}: {err_body}")
+                        };
 
                     if status.as_u16() == 429 || status.is_server_error() {
                         last_err = Some(reason);
@@ -505,7 +519,6 @@ impl GeminiProvider {
                     } else {
                         last_err = Some(format!("Network error: {e}"));
                     }
-                    continue;
                 }
             }
         }
@@ -524,11 +537,7 @@ impl GeminiProvider {
     /// Call the generateContent endpoint with audio inline data for transcription, with retry.
     #[instrument(skip(self, audio_base64), fields(model = %self.model_name, mime_type = %mime_type))]
     async fn call_transcribe_audio(&self, audio_base64: &str, mime_type: &str) -> Result<String> {
-        let url = format!(
-            "{}:generateContent?key={}",
-            self.base_url(),
-            self.api_key
-        );
+        let url = format!("{}:generateContent?key={}", self.base_url(), self.api_key);
 
         let body = MultimodalGenerateRequest {
             contents: vec![MultimodalContent {
@@ -553,20 +562,23 @@ impl GeminiProvider {
             if attempt > 0 {
                 self.stats.total_retries.fetch_add(1, Ordering::Relaxed);
                 let delay = Duration::from_millis(100 * 2u64.pow(attempt - 1));
-                warn!(attempt, delay_ms = delay.as_millis(), "Retrying Gemini audio transcription");
+                warn!(
+                    attempt,
+                    delay_ms = delay.as_millis(),
+                    "Retrying Gemini audio transcription"
+                );
                 tokio::time::sleep(delay).await;
             }
 
             match self.client.post(&url).json(&body).send().await {
                 Ok(resp) => {
                     if resp.status().is_success() {
-                        let parsed: GenerateContentResponse =
-                            resp.json().await.map_err(|e| {
-                                UmmsError::Encoding(EncodingError::ApiCallFailed {
-                                    provider: "gemini".into(),
-                                    reason: format!("Failed to parse transcription response: {e}"),
-                                })
-                            })?;
+                        let parsed: GenerateContentResponse = resp.json().await.map_err(|e| {
+                            UmmsError::Encoding(EncodingError::ApiCallFailed {
+                                provider: "gemini".into(),
+                                reason: format!("Failed to parse transcription response: {e}"),
+                            })
+                        })?;
 
                         let elapsed = start.elapsed();
                         self.stats
@@ -592,13 +604,12 @@ impl GeminiProvider {
 
                     let status = resp.status();
                     let err_body = resp.text().await.unwrap_or_default();
-                    let reason = if let Ok(ge) =
-                        serde_json::from_str::<GeminiErrorResponse>(&err_body)
-                    {
-                        format!("{} ({})", ge.error.message, ge.error.status)
-                    } else {
-                        format!("HTTP {status}: {err_body}")
-                    };
+                    let reason =
+                        if let Ok(ge) = serde_json::from_str::<GeminiErrorResponse>(&err_body) {
+                            format!("{} ({})", ge.error.message, ge.error.status)
+                        } else {
+                            format!("HTTP {status}: {err_body}")
+                        };
 
                     if status.as_u16() == 429 || status.is_server_error() {
                         last_err = Some(reason);
@@ -617,7 +628,6 @@ impl GeminiProvider {
                     } else {
                         last_err = Some(format!("Network error: {e}"));
                     }
-                    continue;
                 }
             }
         }
@@ -636,17 +646,11 @@ impl GeminiProvider {
     /// Call the generateContent endpoint with retry.
     #[instrument(skip(self, prompt), fields(model = %self.model_name))]
     async fn call_generate(&self, prompt: &str, max_tokens: Option<usize>) -> Result<String> {
-        let url = format!(
-            "{}:generateContent?key={}",
-            self.base_url(),
-            self.api_key
-        );
+        let url = format!("{}:generateContent?key={}", self.base_url(), self.api_key);
 
-        let gen_config = max_tokens
-            .or(self.max_tokens)
-            .map(|mt| GenerationConfig {
-                max_output_tokens: Some(mt),
-            });
+        let gen_config = max_tokens.or(self.max_tokens).map(|mt| GenerationConfig {
+            max_output_tokens: Some(mt),
+        });
 
         let body = GenerateContentRequest {
             contents: vec![GenerateContent {
@@ -662,20 +666,23 @@ impl GeminiProvider {
             if attempt > 0 {
                 self.stats.total_retries.fetch_add(1, Ordering::Relaxed);
                 let delay = Duration::from_millis(100 * 2u64.pow(attempt - 1));
-                warn!(attempt, delay_ms = delay.as_millis(), "Retrying Gemini generate API");
+                warn!(
+                    attempt,
+                    delay_ms = delay.as_millis(),
+                    "Retrying Gemini generate API"
+                );
                 tokio::time::sleep(delay).await;
             }
 
             match self.client.post(&url).json(&body).send().await {
                 Ok(resp) => {
                     if resp.status().is_success() {
-                        let parsed: GenerateContentResponse =
-                            resp.json().await.map_err(|e| {
-                                UmmsError::Encoding(EncodingError::ApiCallFailed {
-                                    provider: "gemini".into(),
-                                    reason: format!("Failed to parse generate response: {e}"),
-                                })
-                            })?;
+                        let parsed: GenerateContentResponse = resp.json().await.map_err(|e| {
+                            UmmsError::Encoding(EncodingError::ApiCallFailed {
+                                provider: "gemini".into(),
+                                reason: format!("Failed to parse generate response: {e}"),
+                            })
+                        })?;
 
                         let elapsed = start.elapsed();
                         self.stats
@@ -701,13 +708,12 @@ impl GeminiProvider {
 
                     let status = resp.status();
                     let err_body = resp.text().await.unwrap_or_default();
-                    let reason = if let Ok(ge) =
-                        serde_json::from_str::<GeminiErrorResponse>(&err_body)
-                    {
-                        format!("{} ({})", ge.error.message, ge.error.status)
-                    } else {
-                        format!("HTTP {status}: {err_body}")
-                    };
+                    let reason =
+                        if let Ok(ge) = serde_json::from_str::<GeminiErrorResponse>(&err_body) {
+                            format!("{} ({})", ge.error.message, ge.error.status)
+                        } else {
+                            format!("HTTP {status}: {err_body}")
+                        };
 
                     if status.as_u16() == 429 || status.is_server_error() {
                         last_err = Some(reason);
@@ -726,7 +732,6 @@ impl GeminiProvider {
                     } else {
                         last_err = Some(format!("Network error: {e}"));
                     }
-                    continue;
                 }
             }
         }
@@ -763,13 +768,19 @@ impl ModelProvider for GeminiProvider {
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         self.stats.total_requests.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_texts_encoded.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_texts_encoded
+            .fetch_add(1, Ordering::Relaxed);
 
         let vec = self.call_embed_single(text).await?;
 
         if let Some(dim) = self.dimension {
             if vec.len() != dim {
-                error!(expected = dim, got = vec.len(), "Dimension mismatch from Gemini API");
+                error!(
+                    expected = dim,
+                    got = vec.len(),
+                    "Dimension mismatch from Gemini API"
+                );
                 return Err(UmmsError::Encoding(EncodingError::ApiCallFailed {
                     provider: "gemini".into(),
                     reason: format!("Expected {dim} dimensions, got {}", vec.len()),
@@ -832,7 +843,11 @@ impl ModelProvider for GeminiProvider {
 
         if let Some(dim) = self.dimension {
             if vec.len() != dim {
-                error!(expected = dim, got = vec.len(), "Dimension mismatch from Gemini image embed API");
+                error!(
+                    expected = dim,
+                    got = vec.len(),
+                    "Dimension mismatch from Gemini image embed API"
+                );
                 return Err(UmmsError::Encoding(EncodingError::ApiCallFailed {
                     provider: "gemini".into(),
                     reason: format!("Expected {dim} dimensions, got {}", vec.len()),

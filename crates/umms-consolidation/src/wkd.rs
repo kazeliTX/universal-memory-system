@@ -23,6 +23,10 @@ use umms_core::error::Result;
 use umms_core::traits::VectorStore;
 use umms_core::types::{AgentId, MemoryEntry, MemoryEntryBuilder};
 
+/// Type alias for the optional LLM summary generation callback.
+type GenerateFn<'a> =
+    dyn Fn(&str) -> Pin<Box<dyn Future<Output = Result<String>> + Send + '_>> + Send + Sync + 'a;
+
 // ---------------------------------------------------------------------------
 // Result type
 // ---------------------------------------------------------------------------
@@ -82,9 +86,7 @@ impl WkdEngine {
         &self,
         store: &dyn VectorStore,
         agent_id: &AgentId,
-        generate_fn: Option<
-            &(dyn Fn(&str) -> Pin<Box<dyn Future<Output = Result<String>> + Send + '_>> + Send + Sync),
-        >,
+        generate_fn: Option<&GenerateFn<'_>>,
     ) -> Result<WkdResult> {
         let start = Instant::now();
 
@@ -238,9 +240,7 @@ impl WkdEngine {
         cluster: &[&MemoryEntry],
         store: &dyn VectorStore,
         agent_id: &AgentId,
-        generate_fn: Option<
-            &(dyn Fn(&str) -> Pin<Box<dyn Future<Output = Result<String>> + Send + '_>> + Send + Sync),
-        >,
+        generate_fn: Option<&GenerateFn<'_>>,
     ) -> Result<(usize, usize)> {
         // Build merged content
         let contents: Vec<&str> = cluster
@@ -271,10 +271,7 @@ impl WkdEngine {
         };
 
         // Max importance from cluster
-        let max_importance = cluster
-            .iter()
-            .map(|e| e.importance)
-            .fold(0.0f32, f32::max);
+        let max_importance = cluster.iter().map(|e| e.importance).fold(0.0f32, f32::max);
 
         // Average vector from cluster
         let avg_vector = average_vectors(cluster);
@@ -292,12 +289,11 @@ impl WkdEngine {
         let first = cluster[0];
 
         // Create distilled entry
-        let mut builder =
-            MemoryEntryBuilder::new(agent_id.clone(), first.modality.clone())
-                .layer(first.layer.clone())
-                .scope(first.scope.clone())
-                .importance(max_importance)
-                .tags(all_tags);
+        let mut builder = MemoryEntryBuilder::new(agent_id.clone(), first.modality)
+            .layer(first.layer)
+            .scope(first.scope)
+            .importance(max_importance)
+            .tags(all_tags);
 
         if !merged_content.is_empty() {
             builder = builder.content_text(merged_content);
@@ -359,8 +355,8 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     let mut mag_b = 0.0f64;
 
     for (x, y) in a.iter().zip(b.iter()) {
-        let x = *x as f64;
-        let y = *y as f64;
+        let x = f64::from(*x);
+        let y = f64::from(*y);
         dot += x * y;
         mag_a += x * x;
         mag_b += y * y;

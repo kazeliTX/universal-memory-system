@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use tokio::sync::Mutex;
 
 use umms_core::error::{StorageError, UmmsError};
@@ -25,11 +25,10 @@ impl SqliteGraphStore {
     ///
     /// Pass `":memory:"` for an in-memory database (useful for tests).
     pub fn new(path: impl AsRef<Path>) -> std::result::Result<Self, UmmsError> {
-        let conn = Connection::open(path.as_ref())
-            .map_err(|e| StorageError::ConnectionFailed {
-                backend: "sqlite-graph".into(),
-                reason: e.to_string(),
-            })?;
+        let conn = Connection::open(path.as_ref()).map_err(|e| StorageError::ConnectionFailed {
+            backend: "sqlite-graph".into(),
+            reason: e.to_string(),
+        })?;
 
         Self::run_migrations(&conn)?;
 
@@ -88,7 +87,6 @@ fn node_type_to_str(t: KgNodeType) -> &'static str {
 
 fn str_to_node_type(s: &str) -> KgNodeType {
     match s {
-        "entity" => KgNodeType::Entity,
         "concept" => KgNodeType::Concept,
         "relation" => KgNodeType::Relation,
         _ => KgNodeType::Entity,
@@ -109,8 +107,12 @@ fn row_to_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<KgNode> {
     let created_str: String = row.get(6)?;
     let updated_str: String = row.get(7)?;
 
+    let id = NodeId::from_str(&id_str).map_err(|e| {
+        tracing::warn!(error = %e, raw = %id_str, "node with unparseable id");
+        rusqlite::Error::InvalidParameterName(format!("bad node id: {id_str}"))
+    })?;
     Ok(KgNode {
-        id: NodeId::from_str(&id_str).unwrap_or_else(|_| NodeId::new()),
+        id,
         agent_id: agent_str.and_then(|s| AgentId::from_str(&s).ok()),
         node_type: str_to_node_type(&nt_str),
         label,
@@ -133,10 +135,22 @@ fn row_to_edge(row: &rusqlite::Row<'_>) -> rusqlite::Result<KgEdge> {
     let agent_str: Option<String> = row.get(5)?;
     let created_str: String = row.get(6)?;
 
+    let id = EdgeId::from_str(&id_str).map_err(|e| {
+        tracing::warn!(error = %e, "edge with unparseable id");
+        rusqlite::Error::InvalidParameterName(format!("bad edge id: {id_str}"))
+    })?;
+    let source_id = NodeId::from_str(&source_str).map_err(|e| {
+        tracing::warn!(error = %e, "edge with unparseable source_id");
+        rusqlite::Error::InvalidParameterName(format!("bad source_id: {source_str}"))
+    })?;
+    let target_id = NodeId::from_str(&target_str).map_err(|e| {
+        tracing::warn!(error = %e, "edge with unparseable target_id");
+        rusqlite::Error::InvalidParameterName(format!("bad target_id: {target_str}"))
+    })?;
     Ok(KgEdge {
-        id: EdgeId::from_str(&id_str).unwrap_or_else(|_| EdgeId::new()),
-        source_id: NodeId::from_str(&source_str).unwrap_or_else(|_| NodeId::new()),
-        target_id: NodeId::from_str(&target_str).unwrap_or_else(|_| NodeId::new()),
+        id,
+        source_id,
+        target_id,
         relation,
         #[allow(clippy::cast_possible_truncation)]
         weight: weight as f32,
@@ -484,8 +498,10 @@ impl KnowledgeGraphStore for SqliteGraphStore {
             // Add the WHERE id param.
             param_values.push(Box::new(id.as_str().to_string()));
 
-            let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-                param_values.iter().map(|p| p.as_ref()).collect();
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values
+                .iter()
+                .map(std::convert::AsRef::as_ref)
+                .collect();
 
             conn.execute(&sql, param_refs.as_slice())
                 .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
@@ -568,20 +584,21 @@ impl KnowledgeGraphStore for SqliteGraphStore {
         tokio::task::spawn_blocking(move || {
             let conn = conn.blocking_lock();
             let now = Utc::now().to_rfc3339();
-            let props_str = serde_json::to_string(&merged_properties)
-                .unwrap_or_else(|_| "{}".to_string());
+            let props_str =
+                serde_json::to_string(&merged_properties).unwrap_or_else(|_| "{}".to_string());
 
             // Collect edge IDs that will be redirected (before redirect).
             let mut stmt = conn
-                .prepare(
-                    "SELECT id FROM kg_edges WHERE source_id = ?1 OR target_id = ?1",
-                )
+                .prepare("SELECT id FROM kg_edges WHERE source_id = ?1 OR target_id = ?1")
                 .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
 
             let redirected_ids: Vec<EdgeId> = stmt
                 .query_map(params![absorbed.as_str()], |row| {
                     let id_str: String = row.get(0)?;
-                    Ok(EdgeId::from_str(&id_str).unwrap_or_else(|_| EdgeId::new()))
+                    EdgeId::from_str(&id_str).map_err(|e| {
+                        tracing::warn!(error = %e, "edge with unparseable id in merge");
+                        rusqlite::Error::InvalidParameterName(format!("bad edge id: {id_str}"))
+                    })
                 })
                 .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?
                 .filter_map(std::result::Result::ok)
@@ -618,11 +635,8 @@ impl KnowledgeGraphStore for SqliteGraphStore {
                 .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
 
                 // Also remove self-loops created by the merge.
-                conn.execute(
-                    "DELETE FROM kg_edges WHERE source_id = target_id",
-                    [],
-                )
-                .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+                conn.execute("DELETE FROM kg_edges WHERE source_id = target_id", [])
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
 
                 // (d) Update surviving node properties.
                 conn.execute(
@@ -797,70 +811,64 @@ impl KnowledgeGraphStore for SqliteGraphStore {
         tokio::task::spawn_blocking(move || {
             let conn = conn.blocking_lock();
 
-            let (node_count, shared_node_count) = match &agent_id {
-                Some(aid) => {
-                    let nc: i64 = conn
-                        .query_row(
-                            "SELECT COUNT(*) FROM kg_nodes WHERE agent_id = ?1 OR agent_id IS NULL",
-                            params![aid.as_str()],
-                            |row| row.get(0),
-                        )
-                        .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
-                    let snc: i64 = conn
-                        .query_row(
-                            "SELECT COUNT(*) FROM kg_nodes WHERE agent_id IS NULL",
-                            [],
-                            |row| row.get(0),
-                        )
-                        .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
-                    (nc, snc)
-                }
-                None => {
-                    let nc: i64 = conn
-                        .query_row("SELECT COUNT(*) FROM kg_nodes", [], |row| row.get(0))
-                        .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
-                    let snc: i64 = conn
-                        .query_row(
-                            "SELECT COUNT(*) FROM kg_nodes WHERE agent_id IS NULL",
-                            [],
-                            |row| row.get(0),
-                        )
-                        .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
-                    (nc, snc)
-                }
+            let (node_count, shared_node_count) = if let Some(aid) = &agent_id {
+                let nc: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM kg_nodes WHERE agent_id = ?1 OR agent_id IS NULL",
+                        params![aid.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+                let snc: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM kg_nodes WHERE agent_id IS NULL",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+                (nc, snc)
+            } else {
+                let nc: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM kg_nodes", [], |row| row.get(0))
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+                let snc: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM kg_nodes WHERE agent_id IS NULL",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+                (nc, snc)
             };
 
-            let (edge_count, shared_edge_count) = match &agent_id {
-                Some(aid) => {
-                    let ec: i64 = conn
-                        .query_row(
-                            "SELECT COUNT(*) FROM kg_edges WHERE agent_id = ?1 OR agent_id IS NULL",
-                            params![aid.as_str()],
-                            |row| row.get(0),
-                        )
-                        .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
-                    let sec: i64 = conn
-                        .query_row(
-                            "SELECT COUNT(*) FROM kg_edges WHERE agent_id IS NULL",
-                            [],
-                            |row| row.get(0),
-                        )
-                        .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
-                    (ec, sec)
-                }
-                None => {
-                    let ec: i64 = conn
-                        .query_row("SELECT COUNT(*) FROM kg_edges", [], |row| row.get(0))
-                        .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
-                    let sec: i64 = conn
-                        .query_row(
-                            "SELECT COUNT(*) FROM kg_edges WHERE agent_id IS NULL",
-                            [],
-                            |row| row.get(0),
-                        )
-                        .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
-                    (ec, sec)
-                }
+            let (edge_count, shared_edge_count) = if let Some(aid) = &agent_id {
+                let ec: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM kg_edges WHERE agent_id = ?1 OR agent_id IS NULL",
+                        params![aid.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+                let sec: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM kg_edges WHERE agent_id IS NULL",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+                (ec, sec)
+            } else {
+                let ec: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM kg_edges", [], |row| row.get(0))
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+                let sec: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM kg_edges WHERE agent_id IS NULL",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
+                (ec, sec)
             };
 
             Ok(GraphStats {
@@ -902,7 +910,7 @@ impl KnowledgeGraphStore for SqliteGraphStore {
                 .map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?;
 
             tracing::info!(
-                agent_id = ?agent_id.as_ref().map(|a| a.as_str()),
+                agent_id = ?agent_id.as_ref().map(umms_core::AgentId::as_str),
                 nodes_deleted,
                 edges_deleted,
                 "graph cleared"
@@ -961,7 +969,10 @@ mod tests {
         let returned_id = store.add_node(&node).await.unwrap();
         assert_eq!(returned_id.as_str(), "node-1");
 
-        let fetched = store.get_node(&NodeId::from_str("node-1").unwrap()).await.unwrap();
+        let fetched = store
+            .get_node(&NodeId::from_str("node-1").unwrap())
+            .await
+            .unwrap();
         assert!(fetched.is_some());
         let fetched = fetched.unwrap();
         assert_eq!(fetched.label, "Rust Language");
@@ -972,8 +983,14 @@ mod tests {
     #[tokio::test]
     async fn add_edge_and_verify() {
         let store = in_memory_store();
-        store.add_node(&make_node("n1", "Node 1", None)).await.unwrap();
-        store.add_node(&make_node("n2", "Node 2", None)).await.unwrap();
+        store
+            .add_node(&make_node("n1", "Node 1", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("n2", "Node 2", None))
+            .await
+            .unwrap();
 
         let edge = make_edge("e1", "n1", "n2", "links_to", None);
         let eid = store.add_edge(&edge).await.unwrap();
@@ -995,11 +1012,20 @@ mod tests {
         let store = in_memory_store();
 
         // Shared node (agent_id = None)
-        store.add_node(&make_node("shared-1", "Shared Concept", None)).await.unwrap();
+        store
+            .add_node(&make_node("shared-1", "Shared Concept", None))
+            .await
+            .unwrap();
         // Agent A private node
-        store.add_node(&make_node("a-priv", "Agent A Secret", Some("agent-a"))).await.unwrap();
+        store
+            .add_node(&make_node("a-priv", "Agent A Secret", Some("agent-a")))
+            .await
+            .unwrap();
         // Agent B private node
-        store.add_node(&make_node("b-priv", "Agent B Secret", Some("agent-b"))).await.unwrap();
+        store
+            .add_node(&make_node("b-priv", "Agent B Secret", Some("agent-b")))
+            .await
+            .unwrap();
 
         // Agent A should see shared + own, but not B's.
         let a_nodes = store
@@ -1036,9 +1062,18 @@ mod tests {
         store.add_node(&make_node("c", "C", None)).await.unwrap();
         store.add_node(&make_node("d", "D", None)).await.unwrap();
 
-        store.add_edge(&make_edge("e-ab", "a", "b", "r", None)).await.unwrap();
-        store.add_edge(&make_edge("e-bc", "b", "c", "r", None)).await.unwrap();
-        store.add_edge(&make_edge("e-cd", "c", "d", "r", None)).await.unwrap();
+        store
+            .add_edge(&make_edge("e-ab", "a", "b", "r", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("e-bc", "b", "c", "r", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("e-cd", "c", "d", "r", None))
+            .await
+            .unwrap();
 
         // 2-hop from A should reach A, B, C but NOT D.
         let (nodes, edges) = store
@@ -1065,14 +1100,26 @@ mod tests {
         store.add_node(&make_node("y", "Y", None)).await.unwrap();
         store.add_node(&make_node("z", "Z", None)).await.unwrap();
 
-        store.add_edge(&make_edge("e-xy", "x", "y", "r", None)).await.unwrap();
-        store.add_edge(&make_edge("e-yz", "y", "z", "r", None)).await.unwrap();
+        store
+            .add_edge(&make_edge("e-xy", "x", "y", "r", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("e-yz", "y", "z", "r", None))
+            .await
+            .unwrap();
 
         // Delete node Y — both edges e-xy and e-yz should also be removed.
-        store.delete_node(&NodeId::from_str("y").unwrap()).await.unwrap();
+        store
+            .delete_node(&NodeId::from_str("y").unwrap())
+            .await
+            .unwrap();
 
         // Y should be gone.
-        let y = store.get_node(&NodeId::from_str("y").unwrap()).await.unwrap();
+        let y = store
+            .get_node(&NodeId::from_str("y").unwrap())
+            .await
+            .unwrap();
         assert!(y.is_none());
 
         // Traversing from X should find only X (no edges left).
@@ -1085,7 +1132,10 @@ mod tests {
         assert!(edges.is_empty());
 
         // Z should still exist but be isolated.
-        let z = store.get_node(&NodeId::from_str("z").unwrap()).await.unwrap();
+        let z = store
+            .get_node(&NodeId::from_str("z").unwrap())
+            .await
+            .unwrap();
         assert!(z.is_some());
     }
 
@@ -1110,22 +1160,25 @@ mod tests {
             .await
             .unwrap();
 
-        let fetched = store.get_node(&NodeId::from_str("upd-1").unwrap()).await.unwrap().unwrap();
+        let fetched = store
+            .get_node(&NodeId::from_str("upd-1").unwrap())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(fetched.label, "New Label");
         assert_eq!(fetched.importance, 0.5); // unchanged
 
         // Update only importance.
         store
-            .update_node(
-                &NodeId::from_str("upd-1").unwrap(),
-                None,
-                None,
-                Some(0.9),
-            )
+            .update_node(&NodeId::from_str("upd-1").unwrap(), None, None, Some(0.9))
             .await
             .unwrap();
 
-        let fetched = store.get_node(&NodeId::from_str("upd-1").unwrap()).await.unwrap().unwrap();
+        let fetched = store
+            .get_node(&NodeId::from_str("upd-1").unwrap())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(fetched.label, "New Label"); // unchanged from previous update
         assert!((fetched.importance - 0.9).abs() < f32::EPSILON);
 
@@ -1141,7 +1194,11 @@ mod tests {
             .await
             .unwrap();
 
-        let fetched = store.get_node(&NodeId::from_str("upd-1").unwrap()).await.unwrap().unwrap();
+        let fetched = store
+            .get_node(&NodeId::from_str("upd-1").unwrap())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(fetched.properties["key"], "value");
         assert_eq!(fetched.label, "New Label"); // still unchanged
     }
@@ -1149,14 +1206,29 @@ mod tests {
     #[tokio::test]
     async fn edges_of_returns_both_incoming_and_outgoing() {
         let store = in_memory_store();
-        store.add_node(&make_node("center", "Center", None)).await.unwrap();
-        store.add_node(&make_node("left", "Left", None)).await.unwrap();
-        store.add_node(&make_node("right", "Right", None)).await.unwrap();
+        store
+            .add_node(&make_node("center", "Center", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("left", "Left", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("right", "Right", None))
+            .await
+            .unwrap();
 
         // left -> center (incoming to center)
-        store.add_edge(&make_edge("e-lc", "left", "center", "points_to", None)).await.unwrap();
+        store
+            .add_edge(&make_edge("e-lc", "left", "center", "points_to", None))
+            .await
+            .unwrap();
         // center -> right (outgoing from center)
-        store.add_edge(&make_edge("e-cr", "center", "right", "points_to", None)).await.unwrap();
+        store
+            .add_edge(&make_edge("e-cr", "center", "right", "points_to", None))
+            .await
+            .unwrap();
 
         let edges = store
             .edges_of(&NodeId::from_str("center").unwrap())
@@ -1173,9 +1245,18 @@ mod tests {
     async fn nodes_for_agent_with_and_without_shared() {
         let store = in_memory_store();
 
-        store.add_node(&make_node("shared-1", "Shared", None)).await.unwrap();
-        store.add_node(&make_node("priv-a", "Private A", Some("agent-a"))).await.unwrap();
-        store.add_node(&make_node("priv-b", "Private B", Some("agent-b"))).await.unwrap();
+        store
+            .add_node(&make_node("shared-1", "Shared", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("priv-a", "Private A", Some("agent-a")))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("priv-b", "Private B", Some("agent-b")))
+            .await
+            .unwrap();
 
         // With shared: agent-a sees own + shared.
         let with_shared = store
@@ -1201,14 +1282,29 @@ mod tests {
     async fn merge_nodes_redirects_edges_and_deletes_absorbed() {
         let store = in_memory_store();
 
-        store.add_node(&make_node("survive", "Survivor", None)).await.unwrap();
-        store.add_node(&make_node("absorb", "Absorbed", None)).await.unwrap();
-        store.add_node(&make_node("other", "Other", None)).await.unwrap();
+        store
+            .add_node(&make_node("survive", "Survivor", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("absorb", "Absorbed", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("other", "Other", None))
+            .await
+            .unwrap();
 
         // other -> absorb
-        store.add_edge(&make_edge("e1", "other", "absorb", "rel", None)).await.unwrap();
+        store
+            .add_edge(&make_edge("e1", "other", "absorb", "rel", None))
+            .await
+            .unwrap();
         // absorb -> other (outgoing from absorbed)
-        store.add_edge(&make_edge("e2", "absorb", "other", "rel2", None)).await.unwrap();
+        store
+            .add_edge(&make_edge("e2", "absorb", "other", "rel2", None))
+            .await
+            .unwrap();
 
         let redirected = store
             .merge_nodes(
@@ -1223,11 +1319,18 @@ mod tests {
         assert_eq!(redirected.len(), 2);
 
         // Absorbed node should be gone.
-        let absorbed = store.get_node(&NodeId::from_str("absorb").unwrap()).await.unwrap();
+        let absorbed = store
+            .get_node(&NodeId::from_str("absorb").unwrap())
+            .await
+            .unwrap();
         assert!(absorbed.is_none());
 
         // Surviving node should have merged properties.
-        let survivor = store.get_node(&NodeId::from_str("survive").unwrap()).await.unwrap().unwrap();
+        let survivor = store
+            .get_node(&NodeId::from_str("survive").unwrap())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(survivor.properties["merged"], true);
 
         // Edges should now reference survive instead of absorb.
@@ -1256,8 +1359,14 @@ mod tests {
         store.add_node(&make_node("n2", "N2", None)).await.unwrap();
         store.add_node(&make_node("n3", "N3", None)).await.unwrap();
 
-        store.add_edge(&make_edge("e1", "n1", "n2", "r", None)).await.unwrap();
-        store.add_edge(&make_edge("e2", "n2", "n3", "r", None)).await.unwrap();
+        store
+            .add_edge(&make_edge("e1", "n1", "n2", "r", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("e2", "n2", "n3", "r", None))
+            .await
+            .unwrap();
 
         // Both start at weight 1.0. Update them.
         store
@@ -1284,16 +1393,25 @@ mod tests {
     async fn find_similar_node_pairs_finds_similar_labels() {
         let store = in_memory_store();
 
-        store.add_node(&make_node("n1", "machine learning", Some("agent-a"))).await.unwrap();
-        store.add_node(&make_node("n2", "machine learning algorithms", Some("agent-a"))).await.unwrap();
-        store.add_node(&make_node("n3", "quantum physics", Some("agent-a"))).await.unwrap();
+        store
+            .add_node(&make_node("n1", "machine learning", Some("agent-a")))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node(
+                "n2",
+                "machine learning algorithms",
+                Some("agent-a"),
+            ))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("n3", "quantum physics", Some("agent-a")))
+            .await
+            .unwrap();
 
         let pairs = store
-            .find_similar_node_pairs(
-                Some(&AgentId::from_str("agent-a").unwrap()),
-                0.3,
-                10,
-            )
+            .find_similar_node_pairs(Some(&AgentId::from_str("agent-a").unwrap()), 0.3, 10)
             .await
             .unwrap();
 
@@ -1315,13 +1433,28 @@ mod tests {
         let store = in_memory_store();
 
         // 2 shared nodes, 1 agent-a node.
-        store.add_node(&make_node("s1", "Shared1", None)).await.unwrap();
-        store.add_node(&make_node("s2", "Shared2", None)).await.unwrap();
-        store.add_node(&make_node("a1", "AgentA", Some("agent-a"))).await.unwrap();
+        store
+            .add_node(&make_node("s1", "Shared1", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("s2", "Shared2", None))
+            .await
+            .unwrap();
+        store
+            .add_node(&make_node("a1", "AgentA", Some("agent-a")))
+            .await
+            .unwrap();
 
         // 1 shared edge, 1 agent-a edge.
-        store.add_edge(&make_edge("es1", "s1", "s2", "r", None)).await.unwrap();
-        store.add_edge(&make_edge("ea1", "s1", "a1", "r", Some("agent-a"))).await.unwrap();
+        store
+            .add_edge(&make_edge("es1", "s1", "s2", "r", None))
+            .await
+            .unwrap();
+        store
+            .add_edge(&make_edge("ea1", "s1", "a1", "r", Some("agent-a")))
+            .await
+            .unwrap();
 
         // Stats for agent-a (should see own + shared).
         let s = store

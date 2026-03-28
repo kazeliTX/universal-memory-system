@@ -61,8 +61,7 @@ impl UmmsMetrics {
             cache_misses_total.clone(),
         );
 
-        let retrieval_duration_seconds =
-            Histogram::new(exponential_buckets(0.001, 2.0, 15));
+        let retrieval_duration_seconds = Histogram::new(exponential_buckets(0.001, 2.0, 15));
         registry.register(
             "umms_retrieval_duration_seconds",
             "Histogram of retrieval durations in seconds",

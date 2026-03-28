@@ -2,15 +2,15 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use chrono::Utc;
 use serde::Deserialize;
 
 use umms_persona::{DiaryCategory, DiaryEntry};
 
-use crate::response::{DiaryEntryResponse, DiaryListResponse};
 use crate::AppState;
+use crate::response::{DiaryEntryResponse, DiaryListResponse};
 
 /// GET /api/diary/:agent_id — list diary entries for an agent.
 pub async fn list_diary(

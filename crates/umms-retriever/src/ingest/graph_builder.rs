@@ -12,7 +12,7 @@ use tracing::{info, warn};
 
 use umms_core::error::Result;
 use umms_core::traits::KnowledgeGraphStore;
-use umms_core::types::{AgentId, KgEdge, KgNode, KgNodeType, NodeId};
+use umms_core::types::{AgentId, EdgeId, KgEdge, KgNode, KgNodeType, NodeId};
 
 /// Builds knowledge graph structure from ingested document chunks.
 pub struct GraphBuilder;
@@ -27,6 +27,7 @@ impl GraphBuilder {
     ///
     /// Returns `(nodes_created, edges_created)`. Failures are logged as warnings
     /// and do not abort the entire operation.
+    #[allow(clippy::too_many_lines)]
     pub async fn build_from_chunks(
         graph: &dyn KnowledgeGraphStore,
         memory_ids: &[String],
@@ -82,7 +83,7 @@ impl GraphBuilder {
         // --- Connect consecutive chunks with "follows" edges ---
         for i in 0..node_ids.len().saturating_sub(1) {
             let edge = KgEdge {
-                id: Default::default(),
+                id: EdgeId::default(),
                 source_id: node_ids[i].clone(),
                 target_id: node_ids[i + 1].clone(),
                 relation: "follows".to_owned(),
@@ -109,7 +110,7 @@ impl GraphBuilder {
         }
 
         // For each tag shared by multiple chunks, connect pairs
-        for (_tag, chunk_indices) in &tag_to_chunks {
+        for chunk_indices in tag_to_chunks.values() {
             if chunk_indices.len() < 2 {
                 continue;
             }
@@ -125,7 +126,7 @@ impl GraphBuilder {
                     }
 
                     let edge = KgEdge {
-                        id: Default::default(),
+                        id: EdgeId::default(),
                         source_id: node_ids[idx_a].clone(),
                         target_id: node_ids[idx_b].clone(),
                         relation: "shares_tag".to_owned(),

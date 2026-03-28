@@ -72,23 +72,19 @@ fn read_criterion_results(criterion_dir: &std::path::Path) -> Vec<BenchmarkEntry
             continue;
         };
 
-        let name = entry
-            .file_name()
-            .to_str()
-            .unwrap_or("unknown")
-            .to_owned();
+        let name = entry.file_name().to_str().unwrap_or("unknown").to_owned();
 
         let mean_ns = json
             .pointer("/mean/point_estimate")
-            .and_then(|v| v.as_f64())
+            .and_then(serde_json::Value::as_f64)
             .unwrap_or(0.0);
         let median_ns = json
             .pointer("/median/point_estimate")
-            .and_then(|v| v.as_f64())
+            .and_then(serde_json::Value::as_f64)
             .unwrap_or(0.0);
         let std_dev_ns = json
             .pointer("/std_dev/point_estimate")
-            .and_then(|v| v.as_f64())
+            .and_then(serde_json::Value::as_f64)
             .unwrap_or(0.0);
 
         results.push(BenchmarkEntry {

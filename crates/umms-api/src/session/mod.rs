@@ -111,5 +111,5 @@ fn estimate_tokens(text: &str) -> usize {
         }
     }
     // Divide by 4 to get approximate token count
-    (tokens + 3) / 4
+    tokens.div_ceil(4)
 }

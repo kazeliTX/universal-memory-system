@@ -2,16 +2,16 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
 use axum::Json;
+use axum::extract::{Path, Query, State};
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::response::{
     ChatSource, CreateSessionResponse, SessionDetailResponse, SessionListResponse,
     SessionMessageResponse, SessionSummaryResponse,
 };
 use crate::session::ChatSession;
-use crate::AppState;
 
 /// Query parameters for listing sessions.
 #[derive(Debug, Deserialize)]

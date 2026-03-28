@@ -5,8 +5,8 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::response::Json;
 
-use umms_core::traits::{MemoryCache, VectorStore};
 use crate::response::ClearResponse;
+use umms_core::traits::{MemoryCache, VectorStore};
 use umms_core::types::*;
 use umms_observe::{AuditEventBuilder, AuditEventType};
 
@@ -54,7 +54,7 @@ pub async fn stats(State(state): State<Arc<AppState>>) -> Json<StatsResponse> {
         }
     }
     // Add shared entries once (use any agent with include_shared minus its private count)
-    if let Ok(aid) = AgentId::from_str(known_agents.first().map(|s| s.as_str()).unwrap_or("_")) {
+    if let Ok(aid) = AgentId::from_str(known_agents.first().map_or("_", String::as_str)) {
         let with_shared = state.vector.count(&aid, true).await.unwrap_or(0);
         let without = state.vector.count(&aid, false).await.unwrap_or(0);
         vector_total += with_shared.saturating_sub(without);
@@ -81,6 +81,7 @@ pub async fn metrics(State(state): State<Arc<AppState>>) -> String {
 }
 
 /// `GET /api/demo/seed` — idempotent: clears existing demo data, then re-seeds.
+#[allow(clippy::too_many_lines)]
 pub async fn seed(State(state): State<Arc<AppState>>) -> Json<SeedResponse> {
     // Clear existing data first so repeated seeds don't accumulate
     let _ = clear_all_data(&state).await;
@@ -113,9 +114,8 @@ pub async fn seed(State(state): State<Arc<AppState>>) -> Json<SeedResponse> {
     let mut total_memories = 0u64;
 
     for (idx, name) in agent_names.iter().enumerate() {
-        let agent_id = match AgentId::from_str(name) {
-            Ok(id) => id,
-            Err(_) => continue,
+        let Ok(agent_id) = AgentId::from_str(name) else {
+            continue;
         };
 
         let texts = sample_texts[idx];
@@ -127,13 +127,17 @@ pub async fn seed(State(state): State<Arc<AppState>>) -> Json<SeedResponse> {
                 Ok(vecs) => vecs,
                 Err(e) => {
                     tracing::warn!("Encoder failed, falling back to fake vectors: {e}");
-                    texts.iter().enumerate()
+                    texts
+                        .iter()
+                        .enumerate()
                         .map(|(i, _)| fake_vector(dim, idx, i))
                         .collect()
                 }
             }
         } else {
-            texts.iter().enumerate()
+            texts
+                .iter()
+                .enumerate()
                 .map(|(i, _)| fake_vector(dim, idx, i))
                 .collect()
         };
@@ -156,7 +160,7 @@ pub async fn seed(State(state): State<Arc<AppState>>) -> Json<SeedResponse> {
                 // Also index in BM25 for hybrid search
                 let _ = state.bm25.index_entry(&entry).await;
                 state.audit.record(
-                    AuditEventBuilder::new(AuditEventType::VectorInsert, name.to_string())
+                    AuditEventBuilder::new(AuditEventType::VectorInsert, &agent_id)
                         .memory_id(entry.id.as_str().to_owned())
                         .layer("L2"),
                 );
@@ -189,7 +193,7 @@ pub async fn seed(State(state): State<Arc<AppState>>) -> Json<SeedResponse> {
         };
         if let Ok(nid) = state.graph.add_node(&node).await {
             state.audit.record(
-                AuditEventBuilder::new(AuditEventType::GraphAddNode, "_shared")
+                AuditEventBuilder::new_system(AuditEventType::GraphAddNode, "_shared")
                     .node_id(nid.as_str().to_owned())
                     .layer("L3"),
             );
@@ -219,7 +223,7 @@ pub async fn seed(State(state): State<Arc<AppState>>) -> Json<SeedResponse> {
             };
             if state.graph.add_edge(&edge).await.is_ok() {
                 state.audit.record(
-                    AuditEventBuilder::new(AuditEventType::GraphAddEdge, "_shared")
+                    AuditEventBuilder::new_system(AuditEventType::GraphAddEdge, "_shared")
                         .layer("L3"),
                 );
                 edge_count += 1;
@@ -291,11 +295,7 @@ async fn clear_all_data(state: &AppState) -> ClearResponse {
     }
 
     // Clear graph (all nodes + edges, including shared)
-    let (nodes_deleted, edges_deleted) = state
-        .graph
-        .clear(None)
-        .await
-        .unwrap_or((0, 0));
+    let (nodes_deleted, edges_deleted) = state.graph.clear(None).await.unwrap_or((0, 0));
 
     tracing::info!(
         vectors_deleted,

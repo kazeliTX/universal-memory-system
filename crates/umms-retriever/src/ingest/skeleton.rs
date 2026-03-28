@@ -55,8 +55,7 @@ impl DocSkeleton {
     pub fn contextualize(&self, chunk_index: usize, chunk_text: &str) -> String {
         let section_title = self
             .section_for(chunk_index)
-            .map(|s| s.title.as_str())
-            .unwrap_or("General");
+            .map_or("General", |s| s.title.as_str());
 
         format!(
             "[Document: {} | Section: {} | Summary: {}]\n{}",
@@ -164,6 +163,7 @@ pub async fn extract_skeleton_llm(
 ) -> Result<DocSkeleton> {
     // Truncate to save tokens — first N chars is enough for structure extraction.
     let preview = if text.len() > SKELETON_PREVIEW_CHARS {
+        #[allow(clippy::incompatible_msrv)]
         &text[..text.floor_char_boundary(SKELETON_PREVIEW_CHARS)]
     } else {
         text
@@ -186,6 +186,7 @@ pub async fn extract_skeleton_llm(
 ///
 /// Handles common LLM quirks: markdown code fences, extra whitespace,
 /// missing fields. Falls back to heuristic extraction on parse failure.
+#[allow(clippy::unnecessary_wraps)]
 fn parse_skeleton_response(
     response: &str,
     original_text: &str,
@@ -197,10 +198,7 @@ fn parse_skeleton_response(
         .strip_prefix("```json")
         .or_else(|| response.trim().strip_prefix("```"))
         .unwrap_or(response.trim());
-    let json_str = json_str
-        .strip_suffix("```")
-        .unwrap_or(json_str)
-        .trim();
+    let json_str = json_str.strip_suffix("```").unwrap_or(json_str).trim();
 
     match serde_json::from_str::<serde_json::Value>(json_str) {
         Ok(v) => {
@@ -293,12 +291,10 @@ mod tests {
         DocSkeleton {
             title: "XYZ Algorithm".to_owned(),
             summary: "Proposes XYZ for image classification, achieves 95% on ImageNet.".to_owned(),
-            key_entities: vec![
-                EntityMention {
-                    name: "XYZ".to_owned(),
-                    entity_type: "method".to_owned(),
-                },
-            ],
+            key_entities: vec![EntityMention {
+                name: "XYZ".to_owned(),
+                entity_type: "method".to_owned(),
+            }],
             sections: vec![
                 SectionMeta {
                     title: "Introduction".to_owned(),
@@ -405,7 +401,8 @@ mod tests {
 
     #[test]
     fn parse_skeleton_missing_entity_type_defaults() {
-        let json = r#"{"title": "T", "summary": "S", "key_entities": [{"name": "X"}], "sections": []}"#;
+        let json =
+            r#"{"title": "T", "summary": "S", "key_entities": [{"name": "X"}], "sections": []}"#;
         let sk = parse_skeleton_response(json, "text", 1).unwrap();
         // Entity with missing entity_type should be skipped (name requires Some)
         // Actually, entity_type defaults to "concept" but name is required via filter_map

@@ -25,7 +25,10 @@ impl std::fmt::Display for PromptError {
         match self {
             Self::TemplateNotFound(name) => write!(f, "Template not found: {name}"),
             Self::MissingVariable { section, variable } => {
-                write!(f, "Required variable '{variable}' missing in section '{section}'")
+                write!(
+                    f,
+                    "Required variable '{variable}' missing in section '{section}'"
+                )
             }
             Self::BuildError(msg) => write!(f, "Prompt build error: {msg}"),
         }
@@ -239,7 +242,8 @@ impl PromptEngine {
             },
             PromptVariable {
                 name: "memory_content".into(),
-                description: "\u{68C0}\u{7D22}\u{5230}\u{7684}\u{8BB0}\u{5FC6}\u{5185}\u{5BB9}".into(), // 检索到的记忆内容
+                description: "\u{68C0}\u{7D22}\u{5230}\u{7684}\u{8BB0}\u{5FC6}\u{5185}\u{5BB9}"
+                    .into(), // 检索到的记忆内容
                 resolver: "runtime".into(),
             },
             PromptVariable {
@@ -338,8 +342,7 @@ impl PromptEngine {
                 },
                 PromptSection {
                     name: "history".to_owned(),
-                    template: "\u{5BF9}\u{8BDD}\u{5386}\u{53F2}:\n{{history_content}}"
-                        .to_owned(),
+                    template: "\u{5BF9}\u{8BDD}\u{5386}\u{53F2}:\n{{history_content}}".to_owned(),
                     required: false,
                     max_chars: Some(6000),
                 },
@@ -351,8 +354,7 @@ impl PromptEngine {
                 },
                 PromptSection {
                     name: "instruction".to_owned(),
-                    template: "\u{8BF7}\u{7528}\u{4E2D}\u{6587}\u{56DE}\u{7B54}\u{3002}"
-                        .to_owned(),
+                    template: "\u{8BF7}\u{7528}\u{4E2D}\u{6587}\u{56DE}\u{7B54}\u{3002}".to_owned(),
                     required: false,
                     max_chars: None,
                 },
@@ -563,7 +565,10 @@ mod tests {
             }],
         });
 
-        let vars = make_vars(&[("data", "This is a very long string that should be truncated")]);
+        let vars = make_vars(&[(
+            "data",
+            "This is a very long string that should be truncated",
+        )]);
         let result = engine.build("test", &vars).unwrap();
         assert!(result.len() < 55);
         assert!(result.ends_with("..."));
@@ -649,10 +654,7 @@ mod tests {
                     name: "instruction".into(),
                     block_type: BlockType::Instruction,
                     content: "Answer in English.".into(),
-                    variants: vec![
-                        "Answer in English.".into(),
-                        "Answer in Chinese.".into(),
-                    ],
+                    variants: vec!["Answer in English.".into(), "Answer in Chinese.".into()],
                     selected_variant: 0,
                     enabled: true,
                     order: 2,

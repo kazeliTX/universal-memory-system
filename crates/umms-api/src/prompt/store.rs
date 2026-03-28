@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use tokio::sync::Mutex;
 
 use umms_core::error::{StorageError, UmmsError};
@@ -171,7 +171,7 @@ impl PromptStore {
     /// Save (upsert) a warehouse.
     pub async fn save_warehouse(&self, warehouse: &PromptWarehouse) -> Result<(), UmmsError> {
         let name = warehouse.name.clone();
-        let is_global = warehouse.is_global as i32;
+        let is_global = i32::from(warehouse.is_global);
         let blocks_json = serde_json::to_string(&warehouse.blocks)
             .map_err(|e| UmmsError::Internal(format!("failed to serialize warehouse: {e}")))?;
         let updated_at = Utc::now().to_rfc3339();
@@ -301,17 +301,16 @@ impl PromptStore {
 
     /// Get the global warehouse, creating it if it doesn't exist.
     pub async fn get_global_warehouse(&self) -> Result<PromptWarehouse, UmmsError> {
-        match self.get_warehouse("global").await? {
-            Some(wh) => Ok(wh),
-            None => {
-                let wh = PromptWarehouse {
-                    name: "global".into(),
-                    blocks: vec![],
-                    is_global: true,
-                };
-                self.save_warehouse(&wh).await?;
-                Ok(wh)
-            }
+        if let Some(wh) = self.get_warehouse("global").await? {
+            Ok(wh)
+        } else {
+            let wh = PromptWarehouse {
+                name: "global".into(),
+                blocks: vec![],
+                is_global: true,
+            };
+            self.save_warehouse(&wh).await?;
+            Ok(wh)
         }
     }
 }

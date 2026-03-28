@@ -12,7 +12,7 @@ use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
-use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy};
+use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, doc};
 use tokio::sync::Mutex;
 use tracing::instrument;
 
@@ -45,6 +45,7 @@ impl Bm25Index {
     ///
     /// When `dir` is `None` or the path string is empty, a RAM-only index
     /// is created (the previous default behaviour).
+    #[allow(clippy::needless_pass_by_value)]
     pub fn open<P: AsRef<Path>>(dir: Option<P>) -> Result<Self> {
         let mut schema_builder = Schema::builder();
         let f_id = schema_builder.add_text_field("id", STRING | STORED);
@@ -56,15 +57,13 @@ impl Bm25Index {
         let index = match dir {
             Some(ref p) if !p.as_ref().as_os_str().is_empty() => {
                 let path = p.as_ref();
-                std::fs::create_dir_all(path).map_err(|e| {
-                    UmmsError::Internal(format!("BM25 dir create failed: {e}"))
-                })?;
+                std::fs::create_dir_all(path)
+                    .map_err(|e| UmmsError::Internal(format!("BM25 dir create failed: {e}")))?;
                 let mmap_dir = MmapDirectory::open(path).map_err(|e| {
                     UmmsError::Internal(format!("BM25 MmapDirectory open failed: {e}"))
                 })?;
-                Index::open_or_create(mmap_dir, schema).map_err(|e| {
-                    UmmsError::Internal(format!("BM25 open_or_create failed: {e}"))
-                })?
+                Index::open_or_create(mmap_dir, schema)
+                    .map_err(|e| UmmsError::Internal(format!("BM25 open_or_create failed: {e}")))?
             }
             _ => Index::create_in_ram(schema),
         };
@@ -97,18 +96,20 @@ impl Bm25Index {
             return Ok(());
         }
 
-        let scope_str = serde_json::to_value(&entry.scope)
+        let scope_str = serde_json::to_value(entry.scope)
             .ok()
             .and_then(|v| v.as_str().map(String::from))
             .unwrap_or_else(|| "private".to_owned());
 
         let mut writer = self.writer.lock().await;
-        writer.add_document(doc!(
-            self.f_id => entry.id.as_str(),
-            self.f_agent_id => entry.agent_id.as_str(),
-            self.f_content => content,
-            self.f_scope => scope_str,
-        )).map_err(|e| UmmsError::Internal(format!("BM25 index failed: {e}")))?;
+        writer
+            .add_document(doc!(
+                self.f_id => entry.id.as_str(),
+                self.f_agent_id => entry.agent_id.as_str(),
+                self.f_content => content,
+                self.f_scope => scope_str,
+            ))
+            .map_err(|e| UmmsError::Internal(format!("BM25 index failed: {e}")))?;
 
         writer
             .commit()
@@ -128,17 +129,19 @@ impl Bm25Index {
             if content.is_empty() {
                 continue;
             }
-            let scope_str = serde_json::to_value(&entry.scope)
+            let scope_str = serde_json::to_value(entry.scope)
                 .ok()
                 .and_then(|v| v.as_str().map(String::from))
                 .unwrap_or_else(|| "private".to_owned());
 
-            writer.add_document(doc!(
-                self.f_id => entry.id.as_str(),
-                self.f_agent_id => entry.agent_id.as_str(),
-                self.f_content => content,
-                self.f_scope => scope_str,
-            )).map_err(|e| UmmsError::Internal(format!("BM25 index failed: {e}")))?;
+            writer
+                .add_document(doc!(
+                    self.f_id => entry.id.as_str(),
+                    self.f_agent_id => entry.agent_id.as_str(),
+                    self.f_content => content,
+                    self.f_scope => scope_str,
+                ))
+                .map_err(|e| UmmsError::Internal(format!("BM25 index failed: {e}")))?;
         }
         writer
             .commit()
@@ -171,7 +174,8 @@ impl Bm25Index {
 
         let mut results = Vec::new();
         for (score, doc_address) in top_docs {
-            let doc = searcher.doc::<TantivyDocument>(doc_address)
+            let doc = searcher
+                .doc::<TantivyDocument>(doc_address)
                 .map_err(|e| UmmsError::Internal(format!("BM25 doc read failed: {e}")))?;
 
             let doc_agent = doc

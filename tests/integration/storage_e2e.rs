@@ -25,9 +25,11 @@ use umms_storage::vector::LanceVectorStore;
 
 /// Create a unique temp directory for each test run.
 fn test_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir()
-        .join("umms-e2e-test")
-        .join(format!("{}-{}", name, uuid::Uuid::new_v4()));
+    let dir = std::env::temp_dir().join("umms-e2e-test").join(format!(
+        "{}-{}",
+        name,
+        uuid::Uuid::new_v4()
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -63,13 +65,29 @@ async fn agent_isolation_across_all_storage_layers() {
     let id_a = entry_a.id.clone();
     cache.put(&coder, &id_a, entry_a).await;
 
-    assert!(cache.get(&coder, &id_a).await.is_some(), "Owner can see own cache entry");
-    assert!(cache.get(&researcher, &id_a).await.is_none(), "Other agent cannot see cache entry");
+    assert!(
+        cache.get(&coder, &id_a).await.is_some(),
+        "Owner can see own cache entry"
+    );
+    assert!(
+        cache.get(&researcher, &id_a).await.is_none(),
+        "Other agent cannot see cache entry"
+    );
 
     // --- Vector store isolation ---
-    let vec_store = LanceVectorStore::new(dir.join("lance").to_str().unwrap(), 8).await.unwrap();
-    let mem_a = make_entry(&coder, "Rust performance tips", vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
-    let mem_b = make_entry(&researcher, "Quantum computing paper", vec![0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+    let vec_store = LanceVectorStore::new(dir.join("lance").to_str().unwrap(), 8)
+        .await
+        .unwrap();
+    let mem_a = make_entry(
+        &coder,
+        "Rust performance tips",
+        vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    );
+    let mem_b = make_entry(
+        &researcher,
+        "Quantum computing paper",
+        vec![0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    );
     vec_store.insert(&mem_a).await.unwrap();
     vec_store.insert(&mem_b).await.unwrap();
 
@@ -81,10 +99,19 @@ async fn agent_isolation_across_all_storage_layers() {
     assert_eq!(coder_results[0].entry.agent_id, coder);
 
     let researcher_results = vec_store
-        .search(&researcher, &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 10, false)
+        .search(
+            &researcher,
+            &[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            10,
+            false,
+        )
         .await
         .unwrap();
-    assert_eq!(researcher_results.len(), 1, "Researcher only sees own memories");
+    assert_eq!(
+        researcher_results.len(),
+        1,
+        "Researcher only sees own memories"
+    );
     assert_eq!(researcher_results[0].entry.agent_id, researcher);
 
     // --- Graph isolation ---
@@ -113,18 +140,35 @@ async fn agent_isolation_across_all_storage_layers() {
     graph.add_node(&node_b).await.unwrap();
 
     let coder_nodes = graph.find_nodes("", Some(&coder), 100).await.unwrap();
-    assert!(coder_nodes.iter().all(|n| n.agent_id.as_ref() == Some(&coder) || n.agent_id.is_none()),
-        "Coder only sees own + shared nodes");
+    assert!(
+        coder_nodes
+            .iter()
+            .all(|n| n.agent_id.as_ref() == Some(&coder) || n.agent_id.is_none()),
+        "Coder only sees own + shared nodes"
+    );
 
     let researcher_nodes = graph.find_nodes("", Some(&researcher), 100).await.unwrap();
-    assert!(researcher_nodes.iter().all(|n| n.agent_id.as_ref() == Some(&researcher) || n.agent_id.is_none()),
-        "Researcher only sees own + shared nodes");
+    assert!(
+        researcher_nodes
+            .iter()
+            .all(|n| n.agent_id.as_ref() == Some(&researcher) || n.agent_id.is_none()),
+        "Researcher only sees own + shared nodes"
+    );
 
     // --- File isolation ---
     let fs_store = LocalFileStore::new(dir.join("files")).await.unwrap();
-    let path_a = fs_store.store(&coder, "notes.txt", b"coder notes").await.unwrap();
-    let path_b = fs_store.store(&researcher, "notes.txt", b"researcher notes").await.unwrap();
-    assert_ne!(path_a, path_b, "Same filename, different agents → different paths");
+    let path_a = fs_store
+        .store(&coder, "notes.txt", b"coder notes")
+        .await
+        .unwrap();
+    let path_b = fs_store
+        .store(&researcher, "notes.txt", b"researcher notes")
+        .await
+        .unwrap();
+    assert_ne!(
+        path_a, path_b,
+        "Same filename, different agents → different paths"
+    );
 
     let data_a = fs_store.read(&path_a).await.unwrap();
     assert_eq!(data_a, b"coder notes");
@@ -144,19 +188,33 @@ async fn promote_demote_cycle() {
     let coder = agent("coder");
     let researcher = agent("researcher");
 
-    let vec_store = LanceVectorStore::new(dir.join("lance").to_str().unwrap(), 8).await.unwrap();
+    let vec_store = LanceVectorStore::new(dir.join("lance").to_str().unwrap(), 8)
+        .await
+        .unwrap();
 
     // Coder writes a private memory
-    let mem = make_entry(&coder, "Tokio runtime internals", vec![1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+    let mem = make_entry(
+        &coder,
+        "Tokio runtime internals",
+        vec![1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    );
     let mem_id = mem.id.clone();
     vec_store.insert(&mem).await.unwrap();
 
     // Researcher cannot see it (even with include_shared=true)
     let results = vec_store
-        .search(&researcher, &[1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 10, true)
+        .search(
+            &researcher,
+            &[1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            10,
+            true,
+        )
         .await
         .unwrap();
-    assert!(results.iter().all(|r| r.entry.id != mem_id), "Researcher cannot see private memory before promotion");
+    assert!(
+        results.iter().all(|r| r.entry.id != mem_id),
+        "Researcher cannot see private memory before promotion"
+    );
 
     // Promote to shared
     let result = promotion::promote(&vec_store, &mem_id, &[]).await.unwrap();
@@ -164,13 +222,23 @@ async fn promote_demote_cycle() {
 
     // Now researcher CAN see it via include_shared
     let results = vec_store
-        .search(&researcher, &[1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 10, true)
+        .search(
+            &researcher,
+            &[1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            10,
+            true,
+        )
         .await
         .unwrap();
-    assert!(results.iter().any(|r| r.entry.id == mem_id), "Researcher can see shared memory after promotion");
+    assert!(
+        results.iter().any(|r| r.entry.id == mem_id),
+        "Researcher can see shared memory after promotion"
+    );
 
     // Demote back to private
-    let result = promotion::demote(&vec_store, &mem_id, &researcher).await.unwrap();
+    let result = promotion::demote(&vec_store, &mem_id, &researcher)
+        .await
+        .unwrap();
     assert_eq!(result.new_scope, IsolationScope::Private);
 
     // Double promote fails
@@ -206,8 +274,16 @@ async fn agent_switch_preserves_and_restores_state() {
 
     // Switch to researcher
     switcher.switch(&coder, &researcher).await.unwrap();
-    assert_eq!(cache.len(&coder).await, 0, "Coder cache is evicted after switch");
-    assert_eq!(cache.len(&researcher).await, 0, "Researcher starts with empty cache (cold start)");
+    assert_eq!(
+        cache.len(&coder).await,
+        0,
+        "Coder cache is evicted after switch"
+    );
+    assert_eq!(
+        cache.len(&researcher).await,
+        0,
+        "Researcher starts with empty cache (cold start)"
+    );
 
     // Researcher writes 2 entries
     for i in 0..2 {
@@ -222,7 +298,11 @@ async fn agent_switch_preserves_and_restores_state() {
     // Switch back to coder
     switcher.switch(&researcher, &coder).await.unwrap();
     assert_eq!(cache.len(&researcher).await, 0, "Researcher cache evicted");
-    assert_eq!(cache.len(&coder).await, 3, "Coder cache RESTORED from snapshot");
+    assert_eq!(
+        cache.len(&coder).await,
+        3,
+        "Coder cache RESTORED from snapshot"
+    );
 
     println!("✓ Agent switch snapshot/restore verified");
 }
@@ -278,13 +358,19 @@ async fn graph_traversal_with_shared_nodes() {
 
     // Traverse from private node: should reach the shared node
     let (nodes, edges) = graph.traverse(&private_id, 2, Some(&coder)).await.unwrap();
-    assert!(nodes.len() >= 2, "Traversal reaches both private and shared nodes");
+    assert!(
+        nodes.len() >= 2,
+        "Traversal reaches both private and shared nodes"
+    );
     assert!(!edges.is_empty(), "Traversal includes the connecting edge");
 
     // Stats
     let stats = graph.stats(Some(&coder)).await.unwrap();
     assert!(stats.node_count >= 1, "Coder has at least 1 private node");
-    assert!(stats.shared_node_count >= 1, "There is at least 1 shared node");
+    assert!(
+        stats.shared_node_count >= 1,
+        "There is at least 1 shared node"
+    );
 
     println!("✓ Graph traversal with shared nodes verified");
 }
@@ -298,7 +384,9 @@ async fn full_memory_lifecycle() {
     let dir = test_dir("lifecycle");
     let coder = agent("coder");
 
-    let vec_store = LanceVectorStore::new(dir.join("lance").to_str().unwrap(), 8).await.unwrap();
+    let vec_store = LanceVectorStore::new(dir.join("lance").to_str().unwrap(), 8)
+        .await
+        .unwrap();
 
     // 1. Write
     let entry = MemoryEntryBuilder::new(coder.clone(), Modality::Text)
@@ -318,12 +406,21 @@ async fn full_memory_lifecycle() {
         .await
         .unwrap();
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].entry.content_text.as_deref(), Some("Async Rust patterns for high concurrency"));
+    assert_eq!(
+        results[0].entry.content_text.as_deref(),
+        Some("Async Rust patterns for high concurrency")
+    );
 
     // 3. Update importance
-    vec_store.update_metadata(&mem_id, Some(0.9), None, None, None).await.unwrap();
+    vec_store
+        .update_metadata(&mem_id, Some(0.9), None, None, None)
+        .await
+        .unwrap();
     let updated = vec_store.get(&mem_id).await.unwrap().unwrap();
-    assert!((updated.importance - 0.9).abs() < 0.01, "Importance updated to 0.9");
+    assert!(
+        (updated.importance - 0.9).abs() < 0.01,
+        "Importance updated to 0.9"
+    );
 
     // 4. Check promotion criteria
     assert!(
@@ -336,7 +433,9 @@ async fn full_memory_lifecycle() {
     );
 
     // 5. Promote with tag stripping
-    promotion::promote(&vec_store, &mem_id, &["debug".to_string()]).await.unwrap();
+    promotion::promote(&vec_store, &mem_id, &["debug".to_string()])
+        .await
+        .unwrap();
     let promoted = vec_store.get(&mem_id).await.unwrap().unwrap();
     assert_eq!(promoted.scope, IsolationScope::Shared);
 
@@ -346,7 +445,10 @@ async fn full_memory_lifecycle() {
 
     // 7. Delete
     vec_store.delete(&mem_id).await.unwrap();
-    assert!(vec_store.get(&mem_id).await.unwrap().is_none(), "Deleted memory is gone");
+    assert!(
+        vec_store.get(&mem_id).await.unwrap().is_none(),
+        "Deleted memory is gone"
+    );
     assert_eq!(vec_store.count(&coder, true).await.unwrap(), 0);
 
     println!("✓ Full memory lifecycle verified: write → search → update → promote → delete");

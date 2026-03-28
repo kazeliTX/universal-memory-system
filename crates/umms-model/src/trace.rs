@@ -117,9 +117,7 @@ impl TraceStore {
         // Per-model aggregation
         let mut by_model_map: HashMap<String, (usize, usize, u64)> = HashMap::new();
         for t in buf.iter() {
-            let entry = by_model_map
-                .entry(t.model_id.clone())
-                .or_insert((0, 0, 0));
+            let entry = by_model_map.entry(t.model_id.clone()).or_insert((0, 0, 0));
             entry.0 += 1;
             if !t.success {
                 entry.1 += 1;
@@ -195,6 +193,7 @@ impl TraceStore {
 impl std::fmt::Debug for TraceStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TraceStore")
+            .field("traces", &"<locked>")
             .field("max_size", &self.max_size)
             .finish()
     }

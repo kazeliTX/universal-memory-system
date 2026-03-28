@@ -37,13 +37,9 @@ impl MokaMemoryCache {
     #[must_use]
     pub fn new() -> Self {
         // Pure capacity-driven: no TTL/TTI, entries only evicted when capacity exceeded
-        let l0 = Cache::builder()
-            .max_capacity(50)
-            .build();
+        let l0 = Cache::builder().max_capacity(50).build();
 
-        let l1 = Cache::builder()
-            .max_capacity(200)
-            .build();
+        let l1 = Cache::builder().max_capacity(200).build();
 
         Self { l0, l1 }
     }
@@ -53,12 +49,13 @@ impl MokaMemoryCache {
     /// When `session_aware` is true, no time-based expiry is applied —
     /// entries persist until the session closes or capacity eviction kicks in.
     #[must_use]
-    pub fn from_config(l0_cfg: &umms_core::config::CacheLayerConfig, l1_cfg: &umms_core::config::CacheLayerConfig) -> Self {
+    pub fn from_config(
+        l0_cfg: &umms_core::config::CacheLayerConfig,
+        l1_cfg: &umms_core::config::CacheLayerConfig,
+    ) -> Self {
         let l0 = if l0_cfg.session_aware {
             // Session-aware: capacity-only eviction, no TTL
-            Cache::builder()
-                .max_capacity(l0_cfg.max_capacity)
-                .build()
+            Cache::builder().max_capacity(l0_cfg.max_capacity).build()
         } else {
             // Legacy: 30s TTL for sensory buffer
             Cache::builder()
@@ -69,9 +66,7 @@ impl MokaMemoryCache {
 
         let l1 = if l1_cfg.session_aware {
             // Session-aware: capacity-only eviction, no TTI
-            Cache::builder()
-                .max_capacity(l1_cfg.max_capacity)
-                .build()
+            Cache::builder().max_capacity(l1_cfg.max_capacity).build()
         } else {
             // Legacy: 5min TTI for working memory
             Cache::builder()
@@ -467,10 +462,7 @@ mod tests {
 
         let a_entries = cache.entries_for_agent(&a).await;
         assert_eq!(a_entries.len(), 1);
-        assert_eq!(
-            a_entries[0].content_text.as_deref(),
-            Some("a-data")
-        );
+        assert_eq!(a_entries[0].content_text.as_deref(), Some("a-data"));
     }
 
     // -- TTL expiry (L0) — short durations with real sleeps ----------------
@@ -560,9 +552,7 @@ mod tests {
         let a = agent("agent-a");
         let id = mem_id("mem-active");
 
-        cache
-            .put(&a, &id, l1_entry(&a, &id, "keep alive"))
-            .await;
+        cache.put(&a, &id, l1_entry(&a, &id, "keep alive")).await;
 
         // Access every 500ms (before the 1s TTI) three times.
         for _ in 0..3 {
@@ -583,12 +573,8 @@ mod tests {
         let a = agent("agent-a");
         let id = mem_id("mem-1");
 
-        cache
-            .put(&a, &id, l0_entry(&a, &id, "version-1"))
-            .await;
-        cache
-            .put(&a, &id, l0_entry(&a, &id, "version-2"))
-            .await;
+        cache.put(&a, &id, l0_entry(&a, &id, "version-1")).await;
+        cache.put(&a, &id, l0_entry(&a, &id, "version-2")).await;
 
         let got = cache.get(&a, &id).await.unwrap();
         assert_eq!(got.content_text.as_deref(), Some("version-2"));
@@ -602,12 +588,8 @@ mod tests {
 
         // Put to L0 and L1 with same agent+memory_id.
         // They go to different caches, so `get` returns L0 first.
-        cache
-            .put(&a, &id, l0_entry(&a, &id, "l0-version"))
-            .await;
-        cache
-            .put(&a, &id, l1_entry(&a, &id, "l1-version"))
-            .await;
+        cache.put(&a, &id, l0_entry(&a, &id, "l0-version")).await;
+        cache.put(&a, &id, l1_entry(&a, &id, "l1-version")).await;
 
         // get() checks L0 first.
         let got = cache.get(&a, &id).await.unwrap();

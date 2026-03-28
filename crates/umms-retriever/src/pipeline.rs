@@ -11,15 +11,15 @@ use async_trait::async_trait;
 use tracing::instrument;
 
 use umms_core::config::{EpaConfig, ReshapingConfig, RetrieverConfig};
-use umms_core::importance::{self, ImportanceConfig};
 use umms_core::error::Result;
+use umms_core::error::UmmsError;
+use umms_core::importance::{self, ImportanceConfig};
 use umms_core::tag::EpaResult;
 use umms_core::traits::{
-    Encoder, KnowledgeGraphStore, Retriever, RetrievalLatency, RetrievalResult, TagStore,
+    Encoder, KnowledgeGraphStore, RetrievalLatency, RetrievalResult, Retriever, TagStore,
     VectorStore,
 };
-use umms_core::error::UmmsError;
-use umms_core::types::{AgentId, MemoryId, ScoredMemory, ScoreSource};
+use umms_core::types::{AgentId, MemoryId, ScoreSource, ScoredMemory};
 
 use umms_analyzer::epa::EpaAnalyzer;
 use umms_analyzer::lgsrr::{LgsrrDecomposer, LgsrrDecomposition};
@@ -67,7 +67,14 @@ impl RetrievalPipeline {
         graph: Arc<dyn KnowledgeGraphStore>,
         config: RetrieverConfig,
     ) -> Self {
-        Self::with_importance(bm25, vector, encoder, graph, config, ImportanceConfig::default())
+        Self::with_importance(
+            bm25,
+            vector,
+            encoder,
+            graph,
+            config,
+            ImportanceConfig::default(),
+        )
     }
 
     /// Construct the pipeline with a custom importance scoring configuration.
@@ -99,6 +106,7 @@ impl RetrievalPipeline {
 
     /// Attach EPA and query reshaping to the pipeline.
     /// Call this after construction if a TagStore is available.
+    #[must_use]
     pub fn with_epa(
         mut self,
         tag_store: Arc<dyn TagStore>,
@@ -106,26 +114,16 @@ impl RetrievalPipeline {
         reshaping_config: ReshapingConfig,
     ) -> Self {
         if epa_config.enabled {
-            self.epa = Some(EpaAnalyzer::new(
-                Arc::clone(&tag_store),
-                epa_config,
-            ));
+            self.epa = Some(EpaAnalyzer::new(Arc::clone(&tag_store), epa_config));
         }
         if reshaping_config.enabled {
-            self.reshaper = Some(QueryReshaper::new(
-                tag_store,
-                reshaping_config,
-            ));
+            self.reshaper = Some(QueryReshaper::new(tag_store, reshaping_config));
         }
         self
     }
 
     /// Stage 2: Rerank using cosine similarity re-scoring.
-    fn rerank(
-        &self,
-        candidates: Vec<HybridHit>,
-        query_vector: &[f32],
-    ) -> Vec<HybridHit> {
+    fn rerank(&self, candidates: Vec<HybridHit>, query_vector: &[f32]) -> Vec<HybridHit> {
         let top_k = self.config.top_k_rerank;
         let mut scored: Vec<HybridHit> = candidates
             .into_iter()
@@ -150,6 +148,7 @@ impl RetrievalPipeline {
     }
 
     /// Full pipeline returning rich source-tracking data for visualization.
+    #[allow(clippy::too_many_lines)]
     pub async fn retrieve_with_sources(
         &self,
         query: &str,
@@ -184,9 +183,7 @@ impl RetrievalPipeline {
         };
 
         // Stage 0.6: Query reshape (if enabled + EPA produced results)
-        let effective_vector = if let (Some(reshaper), Some(epa)) =
-            (&self.reshaper, &epa_result)
-        {
+        let effective_vector = if let (Some(reshaper), Some(epa)) = (&self.reshaper, &epa_result) {
             if epa.alpha > 1e-6 && !epa.activated_tags.is_empty() {
                 let reshape_start = std::time::Instant::now();
                 match reshaper.reshape(&query_vector, epa, agent_id).await {
@@ -208,9 +205,12 @@ impl RetrievalPipeline {
 
         // Stage 1: Hybrid recall (using reshaped vector if available)
         let recall_start = std::time::Instant::now();
-        let mut hybrid_result = self.hybrid.recall(query, agent_id, &effective_vector).await?;
+        let hybrid_result = self
+            .hybrid
+            .recall(query, agent_id, &effective_vector)
+            .await?;
         latency.recall_ms = recall_start.elapsed().as_millis() as u64;
-    
+
         let bm25_only = hybrid_result.bm25_only;
         let vector_only = hybrid_result.vector_only;
         let both = hybrid_result.both;
@@ -269,8 +269,7 @@ impl RetrievalPipeline {
 
         let hit_sources: Vec<HitSourceInfo> =
             final_hits.iter().map(|h| h.source_info.clone()).collect();
-        let entries: Vec<ScoredMemory> =
-            final_hits.into_iter().map(|h| h.memory).collect();
+        let entries: Vec<ScoredMemory> = final_hits.into_iter().map(|h| h.memory).collect();
 
         Ok(PipelineResult {
             retrieval: RetrievalResult {
@@ -330,9 +329,8 @@ impl RetrievalPipeline {
                 }
             };
 
-            let seed_node = match nodes.first() {
-                Some(n) => n,
-                None => continue,
+            let Some(seed_node) = nodes.first() else {
+                continue;
             };
 
             // BFS traverse from seed node
@@ -359,9 +357,8 @@ impl RetrievalPipeline {
                     }
                     seen.insert(mid.to_owned());
 
-                    let mem_id = MemoryId::from_str(mid).map_err(|e| {
-                        UmmsError::Internal(format!("bad memory_id in graph: {e}"))
-                    })?;
+                    let mem_id = MemoryId::from_str(mid)
+                        .map_err(|e| UmmsError::Internal(format!("bad memory_id in graph: {e}")))?;
 
                     if let Ok(Some(entry)) = self.vector.get(&mem_id).await {
                         let score = seed.score * 0.5 * node.importance;
@@ -388,11 +385,7 @@ impl RetrievalPipeline {
 #[async_trait]
 impl Retriever for RetrievalPipeline {
     #[instrument(skip(self), fields(query, agent = %agent_id))]
-    async fn retrieve(
-        &self,
-        query: &str,
-        agent_id: &AgentId,
-    ) -> Result<RetrievalResult> {
+    async fn retrieve(&self, query: &str, agent_id: &AgentId) -> Result<RetrievalResult> {
         let result = self.retrieve_with_sources(query, agent_id).await?;
         Ok(result.retrieval)
     }

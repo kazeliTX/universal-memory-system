@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use tokio::sync::Mutex;
 
 use umms_core::error::{StorageError, UmmsError};
@@ -31,11 +31,9 @@ impl SqliteCoocStore {
     ///
     /// Pass `":memory:"` for an in-memory database (useful for tests).
     pub fn new(path: impl AsRef<Path>) -> std::result::Result<Self, UmmsError> {
-        let conn = Connection::open(path.as_ref()).map_err(|e| {
-            StorageError::ConnectionFailed {
-                backend: "sqlite-cooc".into(),
-                reason: e.to_string(),
-            }
+        let conn = Connection::open(path.as_ref()).map_err(|e| StorageError::ConnectionFailed {
+            backend: "sqlite-cooc".into(),
+            reason: e.to_string(),
         })?;
 
         Self::run_migrations(&conn)?;
@@ -75,10 +73,7 @@ impl SqliteCoocStore {
 
     /// Record that a set of tags co-occurred on the same memory entry.
     /// Updates the co-occurrence counts and recalculates PMI values.
-    pub async fn record_cooccurrence(
-        &self,
-        tag_ids: &[TagId],
-    ) -> umms_core::error::Result<()> {
+    pub async fn record_cooccurrence(&self, tag_ids: &[TagId]) -> umms_core::error::Result<()> {
         if tag_ids.len() < 2 {
             return Ok(());
         }
@@ -207,16 +202,14 @@ impl SqliteCoocStore {
 
             let rows = stmt
                 .query_map(params![&id, limit as i64], |row| {
-                    let tag_a_str: String = row.get(0)?;
-                    let tag_b_str: String = row.get(1)?;
+                    let first_tag: String = row.get(0)?;
+                    let second_tag: String = row.get(1)?;
                     let count: i64 = row.get(2)?;
                     let pmi: f64 = row.get(3)?;
 
                     Ok(TagCooccurrence {
-                        tag_a: TagId::from_str(&tag_a_str)
-                            .unwrap_or_else(|_| TagId::new()),
-                        tag_b: TagId::from_str(&tag_b_str)
-                            .unwrap_or_else(|_| TagId::new()),
+                        tag_a: TagId::from_str(&first_tag).unwrap_or_else(|_| TagId::new()),
+                        tag_b: TagId::from_str(&second_tag).unwrap_or_else(|_| TagId::new()),
                         count: count as u64,
                         #[allow(clippy::cast_possible_truncation)]
                         pmi: pmi as f32,
@@ -263,7 +256,10 @@ mod tests {
 
         store.record_cooccurrence(&ids).await.unwrap();
 
-        let coocs = store.cooccurrences(&make_tag_id("tag-a"), 10).await.unwrap();
+        let coocs = store
+            .cooccurrences(&make_tag_id("tag-a"), 10)
+            .await
+            .unwrap();
         assert_eq!(coocs.len(), 2); // tag-a co-occurs with tag-b and tag-c
 
         for cooc in &coocs {
@@ -281,7 +277,10 @@ mod tests {
         store.record_cooccurrence(&ids).await.unwrap();
         store.record_cooccurrence(&ids).await.unwrap();
 
-        let coocs = store.cooccurrences(&make_tag_id("tag-x"), 10).await.unwrap();
+        let coocs = store
+            .cooccurrences(&make_tag_id("tag-x"), 10)
+            .await
+            .unwrap();
         assert_eq!(coocs.len(), 1);
         assert_eq!(coocs[0].count, 3);
     }
@@ -293,7 +292,10 @@ mod tests {
         let ids = vec![make_tag_id("lonely")];
         store.record_cooccurrence(&ids).await.unwrap();
 
-        let coocs = store.cooccurrences(&make_tag_id("lonely"), 10).await.unwrap();
+        let coocs = store
+            .cooccurrences(&make_tag_id("lonely"), 10)
+            .await
+            .unwrap();
         assert!(coocs.is_empty());
     }
 
@@ -310,7 +312,10 @@ mod tests {
         }
         store.record_cooccurrence(&pair_ac).await.unwrap();
 
-        let coocs = store.cooccurrences(&make_tag_id("alpha"), 10).await.unwrap();
+        let coocs = store
+            .cooccurrences(&make_tag_id("alpha"), 10)
+            .await
+            .unwrap();
         assert_eq!(coocs.len(), 2);
 
         // The pair with higher count should have non-zero PMI.

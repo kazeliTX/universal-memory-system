@@ -1,4 +1,3 @@
-
 //! # umms-core
 //!
 //! Core types, traits, and error definitions for the UMMS memory system.

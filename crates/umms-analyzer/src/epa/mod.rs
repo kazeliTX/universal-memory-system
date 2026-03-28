@@ -10,5 +10,5 @@ pub mod kmeans;
 pub mod pca;
 
 pub use analyzer::EpaAnalyzer;
-pub use kmeans::{weighted_kmeans, Cluster};
+pub use kmeans::{Cluster, weighted_kmeans};
 pub use pca::power_iteration_pca;

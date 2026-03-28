@@ -17,7 +17,7 @@ raw_storage_path = "~/.umms/storage"
 [cache]
 l0_capacity = 1000
 l0_ttl_secs = 30
-l1_capacity = 9            # Miller's Law: 7±2
+l1_capacity = 900          # L1 warm cache capacity
 l1_tti_secs = 300
 
 [encoder]

@@ -48,7 +48,9 @@ pub fn build_tokenizer(
             if let Some(enc) = encoder {
                 Box::new(LlmTokenizer::new(enc))
             } else {
-                tracing::warn!("LLM tokenizer requested but no encoder available, falling back to jieba");
+                tracing::warn!(
+                    "LLM tokenizer requested but no encoder available, falling back to jieba"
+                );
                 Box::new(JiebaTokenizer::new())
             }
         }

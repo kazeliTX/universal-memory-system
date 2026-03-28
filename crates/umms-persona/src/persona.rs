@@ -25,22 +25,12 @@ pub struct AgentPersona {
 /// `None` means "use the global default".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct AgentRetrievalConfig {
     pub bm25_weight: Option<f32>,
     pub min_score: Option<f32>,
     pub top_k_final: Option<usize>,
     pub lif_hops: Option<usize>,
-}
-
-impl Default for AgentRetrievalConfig {
-    fn default() -> Self {
-        Self {
-            bm25_weight: None,
-            min_score: None,
-            top_k_final: None,
-            lif_hops: None,
-        }
-    }
 }
 
 #[cfg(test)]

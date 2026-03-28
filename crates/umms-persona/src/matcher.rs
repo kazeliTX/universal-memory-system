@@ -37,11 +37,7 @@ impl AgentMatcher {
         }
 
         // Only return a match if at least one keyword was found
-        if best_score > 0 {
-            best_id
-        } else {
-            None
-        }
+        if best_score > 0 { best_id } else { None }
     }
 }
 

@@ -37,11 +37,7 @@ impl EpaAnalyzer {
     /// 4. Compute logic_depth and cross_domain_resonance from cluster stats.
     /// 5. Extract semantic axes via power iteration PCA.
     /// 6. Compute alpha blending factor.
-    pub async fn analyze(
-        &self,
-        query_vector: &[f32],
-        agent_id: &AgentId,
-    ) -> Result<EpaResult> {
+    pub async fn analyze(&self, query_vector: &[f32], agent_id: &AgentId) -> Result<EpaResult> {
         // Step 1: Search for nearest tags
         let matches = self
             .tag_store
@@ -69,20 +65,12 @@ impl EpaAnalyzer {
             .collect();
 
         // Collect embeddings and weights for clustering / PCA
-        let embeddings: Vec<&[f32]> = activated
-            .iter()
-            .map(|m| m.tag.vector.as_slice())
-            .collect();
+        let embeddings: Vec<&[f32]> = activated.iter().map(|m| m.tag.vector.as_slice()).collect();
         let weights: Vec<f32> = activated.iter().map(|m| m.similarity).collect();
 
         // Step 3: Weighted K-Means clustering
         let k = self.config.num_clusters.min(activated.len());
-        let clusters = weighted_kmeans(
-            &embeddings,
-            &weights,
-            k,
-            self.config.kmeans_iterations,
-        );
+        let clusters = weighted_kmeans(&embeddings, &weights, k, self.config.kmeans_iterations);
 
         // Step 4: Compute metrics
         let total_weight: f32 = clusters.iter().map(|c| c.total_weight).sum();
@@ -103,8 +91,7 @@ impl EpaAnalyzer {
             .iter()
             .filter(|c| {
                 total_weight > 0.0
-                    && (c.total_weight / total_weight)
-                        >= self.config.cluster_significance_threshold
+                    && (c.total_weight / total_weight) >= self.config.cluster_significance_threshold
             })
             .count();
         let cross_domain_resonance = if k > 0 {
@@ -123,11 +110,10 @@ impl EpaAnalyzer {
 
         // Step 6: Compute alpha
         // Average importance of activated tags
-        let avg_importance = if !activated.is_empty() {
-            activated.iter().map(|m| m.tag.importance).sum::<f32>()
-                / activated.len() as f32
-        } else {
+        let avg_importance = if activated.is_empty() {
             0.0
+        } else {
+            activated.iter().map(|m| m.tag.importance).sum::<f32>() / activated.len() as f32
         };
 
         let alpha = (self.config.alpha_base
@@ -161,8 +147,7 @@ impl EpaAnalyzer {
         // BM25 weight: focused queries benefit more from semantic search,
         // so reduce BM25 weight when depth is high.
         let bm25_weight =
-            (base.bm25_weight * (1.0 - 0.3 * depth) * (1.0 + 0.2 * resonance))
-                .clamp(0.05, 0.8);
+            (base.bm25_weight * (1.0 - 0.3 * depth) * (1.0 + 0.2 * resonance)).clamp(0.05, 0.8);
 
         // Recall breadth: focused → fewer candidates suffice;
         // resonant → need more to cover multiple domains.

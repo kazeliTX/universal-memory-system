@@ -2,16 +2,14 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 
 use crate::AppState;
 use crate::response::{ModelStatsResponse, ModelsResponse};
 
 /// GET /api/models — list all registered models and their status.
-pub async fn list_models(
-    State(state): State<Arc<AppState>>,
-) -> Json<ModelsResponse> {
+pub async fn list_models(State(state): State<Arc<AppState>>) -> Json<ModelsResponse> {
     match &state.model_pool {
         Some(pool) => {
             let models: Vec<crate::response::ModelInfoResponse> = pool

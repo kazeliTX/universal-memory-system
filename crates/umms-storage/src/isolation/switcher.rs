@@ -12,8 +12,8 @@ use umms_core::error::Result;
 use umms_core::traits::{AgentContextManager, AgentSnapshot, MemoryCache};
 use umms_core::types::{AgentId, MemoryLayer};
 
-use crate::cache::MokaMemoryCache;
 use super::agent_context::SqliteAgentContextManager;
+use crate::cache::MokaMemoryCache;
 
 /// Orchestrates agent context switches.
 ///
@@ -102,10 +102,7 @@ impl AgentSwitcher {
                 "restored from snapshot"
             );
         } else {
-            tracing::debug!(
-                agent_id = to.as_str(),
-                "cold start — no previous snapshot"
-            );
+            tracing::debug!(agent_id = to.as_str(), "cold start — no previous snapshot");
         }
 
         Ok(())
@@ -113,6 +110,7 @@ impl AgentSwitcher {
 
     /// Cold-start an agent with no prior context. This is a no-op; it exists
     /// for symmetry and logging.
+    #[allow(clippy::unused_async)]
     pub async fn cold_start(&self, agent_id: &AgentId) -> Result<()> {
         tracing::info!(
             agent_id = agent_id.as_str(),

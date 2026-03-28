@@ -3,8 +3,8 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 
 use umms_core::tag::Tag;
 use umms_core::types::{AgentId, TagId};
@@ -25,8 +25,7 @@ pub async fn list_tags(
         .as_ref()
         .ok_or_else(|| "Tag system not enabled".to_owned())?;
 
-    let aid = AgentId::from_str(&agent_id)
-        .map_err(|e| format!("Invalid agent_id: {e}"))?;
+    let aid = AgentId::from_str(&agent_id).map_err(|e| format!("Invalid agent_id: {e}"))?;
 
     let tags = tag_store
         .all_tags(Some(&aid))
@@ -97,8 +96,7 @@ pub async fn tag_cooccurrences(
         .as_ref()
         .ok_or_else(|| "Tag system not enabled".to_owned())?;
 
-    let tag_id = TagId::from_str(&tag_id_str)
-        .map_err(|e| format!("Invalid tag_id: {e}"))?;
+    let tag_id = TagId::from_str(&tag_id_str).map_err(|e| format!("Invalid tag_id: {e}"))?;
 
     let coocs = tag_store
         .cooccurrences(&tag_id, 50)

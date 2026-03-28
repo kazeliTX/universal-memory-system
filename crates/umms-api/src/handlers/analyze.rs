@@ -2,16 +2,15 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 
 use umms_analyzer::lgsrr::LgsrrDecomposer;
 
 use crate::AppState;
 use crate::response::{
-    LgsrrGrammaticalResponse, LgsrrLexicalResponse, LgsrrReasoningResponse,
-    LgsrrRelationResponse, LgsrrRelationalResponse, LgsrrResponse,
-    LgsrrRetrievalHintsResponse, LgsrrSemanticResponse,
+    LgsrrGrammaticalResponse, LgsrrLexicalResponse, LgsrrReasoningResponse, LgsrrRelationResponse,
+    LgsrrRelationalResponse, LgsrrResponse, LgsrrRetrievalHintsResponse, LgsrrSemanticResponse,
 };
 
 /// POST /api/analyze — run LGSRR five-layer decomposition on a query.
@@ -66,10 +65,7 @@ pub async fn analyze_query(
                 .unwrap_or_else(|| "explanation".to_owned()),
             confidence: decomposition.reasoning.confidence,
             retrieval_hints: LgsrrRetrievalHintsResponse {
-                min_score_adjustment: decomposition
-                    .reasoning
-                    .retrieval_hints
-                    .min_score_adjustment,
+                min_score_adjustment: decomposition.reasoning.retrieval_hints.min_score_adjustment,
                 top_k_multiplier: decomposition.reasoning.retrieval_hints.top_k_multiplier,
                 bm25_weight_adjustment: decomposition
                     .reasoning

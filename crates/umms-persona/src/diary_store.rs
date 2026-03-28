@@ -8,7 +8,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use tokio::sync::Mutex;
 
 use umms_core::error::{StorageError, UmmsError};
@@ -96,7 +96,11 @@ impl DiaryStore {
         .await
         .map_err(|e| UmmsError::Internal(format!("spawn_blocking join error: {e}")))??;
 
-        tracing::debug!(id = entry.id, agent_id = entry.agent_id, "added diary entry");
+        tracing::debug!(
+            id = entry.id,
+            agent_id = entry.agent_id,
+            "added diary entry"
+        );
         Ok(())
     }
 
@@ -263,11 +267,9 @@ fn parse_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DiaryEntry> {
         confidence: row.get(4)?,
         source_session_id: row.get(5)?,
         created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now()),
+            .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc)),
         updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(7)?)
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now()),
+            .map_or_else(|_| Utc::now(), |dt| dt.with_timezone(&Utc)),
     })
 }
 
@@ -277,9 +279,7 @@ fn collect_rows(
 ) -> Result<Vec<DiaryEntry>, UmmsError> {
     let mut entries = Vec::new();
     for row in rows {
-        entries.push(
-            row.map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?,
-        );
+        entries.push(row.map_err(|e| UmmsError::Storage(StorageError::Sqlite(e.to_string())))?);
     }
     Ok(entries)
 }
@@ -424,10 +424,7 @@ mod tests {
         let rust_entries = store.search_entries("agent-1", "Rust", 10).await.unwrap();
         assert_eq!(rust_entries.len(), 2);
 
-        let python_entries = store
-            .search_entries("agent-1", "Python", 10)
-            .await
-            .unwrap();
+        let python_entries = store.search_entries("agent-1", "Python", 10).await.unwrap();
         assert_eq!(python_entries.len(), 1);
     }
 

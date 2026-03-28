@@ -24,7 +24,11 @@ impl EncoderStats {
             total_texts_encoded: self.total_texts_encoded.load(Ordering::Relaxed),
             total_errors: self.total_errors.load(Ordering::Relaxed),
             total_retries: self.total_retries.load(Ordering::Relaxed),
-            avg_latency_ms: if reqs > 0 { dur as f64 / reqs as f64 / 1000.0 } else { 0.0 },
+            avg_latency_ms: if reqs > 0 {
+                dur as f64 / reqs as f64 / 1000.0
+            } else {
+                0.0
+            },
         }
     }
 }
