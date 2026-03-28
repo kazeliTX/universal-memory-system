@@ -210,17 +210,21 @@ impl AppState {
             })?,
         );
 
-        // Seed default personas on first run (if store is empty)
+        // Seed/update default personas — ensures system_prompt is always current
         {
-            let existing = persona_store.list().await.map_err(|e| {
-                UmmsError::Config(format!("failed to list personas: {e}"))
-            })?;
-            if existing.is_empty() {
-                tracing::info!("seeding default personas");
-                for persona in umms_persona::default_personas() {
-                    persona_store.save(&persona).await.map_err(|e| {
-                        UmmsError::Config(format!("failed to seed persona: {e}"))
-                    })?;
+            for persona in umms_persona::default_personas() {
+                let existing = persona_store
+                    .get(&persona.agent_id)
+                    .await
+                    .ok()
+                    .flatten();
+                let should_upsert = match &existing {
+                    None => true,
+                    Some(e) => e.system_prompt.is_empty() || !e.system_prompt.contains(&persona.name),
+                };
+                if should_upsert {
+                    tracing::info!(agent_id = persona.agent_id.as_str(), "seeding/updating default persona");
+                    let _ = persona_store.save(&persona).await;
                 }
             }
         }
