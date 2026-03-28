@@ -7,10 +7,10 @@ use chrono::Utc;
 use serde::Deserialize;
 use tauri::State;
 
+use umms_api::AppState;
 use umms_api::prompt::engine::PromptEngine;
 use umms_api::prompt::types::*;
 use umms_api::response::*;
-use umms_api::AppState;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -70,19 +70,18 @@ pub async fn get_prompt_config(
         .await
         .map_err(|e| format!("Failed to get prompt config: {e}"))?;
 
-    let config = match config {
-        Some(c) => c,
-        None => {
-            let blocks = PromptEngine::default_blocks(&agent_id);
-            AgentPromptConfig {
-                agent_id: agent_id.clone(),
-                mode: PromptMode::default(),
-                original_prompt: String::new(),
-                blocks,
-                preset_path: None,
-                preset_content: None,
-                updated_at: Utc::now(),
-            }
+    let config = if let Some(c) = config {
+        c
+    } else {
+        let blocks = PromptEngine::default_blocks(&agent_id);
+        AgentPromptConfig {
+            agent_id: agent_id.clone(),
+            mode: PromptMode::default(),
+            original_prompt: String::new(),
+            blocks,
+            preset_path: None,
+            preset_content: None,
+            updated_at: Utc::now(),
         }
     };
 
@@ -170,9 +169,8 @@ pub async fn switch_prompt_mode(
     agent_id: String,
     mode: String,
 ) -> Result<AgentPromptConfigResponse, String> {
-    let new_mode: PromptMode =
-        serde_json::from_value(serde_json::Value::String(mode.clone()))
-            .map_err(|_| format!("Invalid mode: {mode}"))?;
+    let new_mode: PromptMode = serde_json::from_value(serde_json::Value::String(mode.clone()))
+        .map_err(|_| format!("Invalid mode: {mode}"))?;
 
     let mut config = state
         .prompt_store
@@ -210,9 +208,8 @@ pub async fn add_block(
         .map_err(|e| format!("Failed to get: {e}"))?
         .ok_or_else(|| format!("No prompt config for agent: {agent_id}"))?;
 
-    let bt: BlockType =
-        serde_json::from_value(serde_json::Value::String(block.block_type.clone()))
-            .unwrap_or(BlockType::Custom);
+    let bt: BlockType = serde_json::from_value(serde_json::Value::String(block.block_type.clone()))
+        .unwrap_or(BlockType::Custom);
 
     config.blocks.push(PromptBlock {
         id: block.id.unwrap_or_else(new_block_id),
@@ -255,9 +252,8 @@ pub async fn update_block(
         .find(|b| b.id == block_id)
         .ok_or_else(|| format!("Block not found: {block_id}"))?;
 
-    let bt: BlockType =
-        serde_json::from_value(serde_json::Value::String(block.block_type.clone()))
-            .unwrap_or(BlockType::Custom);
+    let bt: BlockType = serde_json::from_value(serde_json::Value::String(block.block_type.clone()))
+        .unwrap_or(BlockType::Custom);
 
     existing.name = block.name;
     existing.block_type = bt;
@@ -388,7 +384,7 @@ pub async fn select_variant(
         .ok_or_else(|| format!("Block not found: {block_id}"))?;
 
     if variant_index >= block.variants.len() {
-        return Err(format!("Variant index out of range"));
+        return Err("Variant index out of range".to_string());
     }
 
     block.selected_variant = variant_index;
@@ -521,8 +517,8 @@ pub async fn preview_prompt(
 
     let vars = test_vars.unwrap_or_default();
 
-    let resolved = PromptEngine::build_prompt(&config, &vars)
-        .map_err(|e| format!("Build failed: {e}"))?;
+    let resolved =
+        PromptEngine::build_prompt(&config, &vars).map_err(|e| format!("Build failed: {e}"))?;
 
     let mode_str = serde_json::to_value(&config.mode)
         .ok()

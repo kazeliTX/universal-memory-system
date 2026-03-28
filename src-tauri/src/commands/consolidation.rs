@@ -4,11 +4,11 @@ use std::sync::Arc;
 use tauri::State;
 use tracing::{error, info};
 
+use umms_api::AppState;
 use umms_api::response::{
     ConsolidationReportResponse, DecayResultResponse, EvolutionResultResponse,
     PromoteResultResponse, WkdResultResponse,
 };
-use umms_api::AppState;
 use umms_consolidation::ConsolidationScheduler;
 use umms_core::config;
 use umms_core::types::AgentId;

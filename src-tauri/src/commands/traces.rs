@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use tauri::State;
 
+use umms_api::AppState;
 use umms_api::response::{
     ModelTraceResponse, ModelTraceStatResponse, TaskTraceStatResponse, TraceListResponse,
     TraceSummaryResponse,
 };
-use umms_api::AppState;
 
 #[tauri::command]
 pub async fn list_traces(
@@ -104,9 +104,7 @@ pub async fn trace_summary(
 }
 
 #[tauri::command]
-pub async fn clear_traces(
-    state: State<'_, Arc<AppState>>,
-) -> Result<serde_json::Value, String> {
+pub async fn clear_traces(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
     if let Some(pool) = &state.model_pool {
         pool.trace_store.clear();
     }

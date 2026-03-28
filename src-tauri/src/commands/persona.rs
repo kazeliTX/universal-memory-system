@@ -4,17 +4,19 @@ use std::sync::Arc;
 use chrono::Utc;
 use tauri::State;
 
-use umms_api::response::*;
 use umms_api::AppState;
+use umms_api::response::*;
 use umms_core::traits::{MemoryCache, VectorStore};
 use umms_core::types::*;
 use umms_persona::{AgentPersona, AgentRetrievalConfig};
 
 #[tauri::command]
-pub async fn list_agents(
-    state: State<'_, Arc<AppState>>,
-) -> Result<AgentListResponse, String> {
-    let personas = state.persona_store.list().await.map_err(|e| e.to_string())?;
+pub async fn list_agents(state: State<'_, Arc<AppState>>) -> Result<AgentListResponse, String> {
+    let personas = state
+        .persona_store
+        .list()
+        .await
+        .map_err(|e| e.to_string())?;
 
     let mut agents = Vec::with_capacity(personas.len());
     for persona in personas {
@@ -30,7 +32,11 @@ pub async fn list_agents(
             }
         }
 
-        let vector_count = state.vector.count(aid, false).await.map_err(|e| e.to_string())?;
+        let vector_count = state
+            .vector
+            .count(aid, false)
+            .await
+            .map_err(|e| e.to_string())?;
 
         agents.push(AgentPersonaResponse {
             agent_id: persona.agent_id.as_str().to_owned(),
@@ -60,7 +66,7 @@ pub async fn get_agent(
     state: State<'_, Arc<AppState>>,
     agent_id: String,
 ) -> Result<AgentPersonaResponse, String> {
-    let aid = AgentId::from_str(&agent_id).map_err(|e| e.to_string())?;
+    let aid = AgentId::from_str(&agent_id).map_err(std::string::ToString::to_string)?;
 
     let persona = state
         .persona_store
@@ -78,7 +84,11 @@ pub async fn get_agent(
             _ => {}
         }
     }
-    let vector_count = state.vector.count(&aid, false).await.map_err(|e| e.to_string())?;
+    let vector_count = state
+        .vector
+        .count(&aid, false)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(AgentPersonaResponse {
         agent_id: persona.agent_id.as_str().to_owned(),
@@ -109,10 +119,14 @@ pub async fn create_agent(
     description: Option<String>,
     expertise: Option<Vec<String>>,
 ) -> Result<AgentPersonaResponse, String> {
-    let aid = AgentId::from_str(&agent_id).map_err(|e| e.to_string())?;
+    let aid = AgentId::from_str(&agent_id).map_err(std::string::ToString::to_string)?;
 
     // Check for duplicates
-    let existing = state.persona_store.get(&aid).await.map_err(|e| e.to_string())?;
+    let existing = state
+        .persona_store
+        .get(&aid)
+        .await
+        .map_err(|e| e.to_string())?;
     if existing.is_some() {
         return Err(format!("agent '{agent_id}' already exists"));
     }
@@ -130,7 +144,11 @@ pub async fn create_agent(
         updated_at: now,
     };
 
-    state.persona_store.save(&persona).await.map_err(|e| e.to_string())?;
+    state
+        .persona_store
+        .save(&persona)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(AgentPersonaResponse {
         agent_id: persona.agent_id.as_str().to_owned(),
@@ -162,7 +180,7 @@ pub async fn update_agent(
     expertise: Option<Vec<String>>,
     system_prompt: Option<String>,
 ) -> Result<AgentPersonaResponse, String> {
-    let aid = AgentId::from_str(&agent_id).map_err(|e| e.to_string())?;
+    let aid = AgentId::from_str(&agent_id).map_err(std::string::ToString::to_string)?;
 
     let mut persona = state
         .persona_store
@@ -188,7 +206,11 @@ pub async fn update_agent(
     }
     persona.updated_at = Utc::now();
 
-    state.persona_store.save(&persona).await.map_err(|e| e.to_string())?;
+    state
+        .persona_store
+        .save(&persona)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let cache_entries = state.cache.entries_for_agent(&persona.agent_id).await;
     let (mut l0, mut l1) = (0usize, 0usize);
@@ -199,7 +221,11 @@ pub async fn update_agent(
             _ => {}
         }
     }
-    let vector_count = state.vector.count(&persona.agent_id, false).await.map_err(|e| e.to_string())?;
+    let vector_count = state
+        .vector
+        .count(&persona.agent_id, false)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(AgentPersonaResponse {
         agent_id: persona.agent_id.as_str().to_owned(),
@@ -226,12 +252,20 @@ pub async fn delete_agent(
     state: State<'_, Arc<AppState>>,
     agent_id: String,
 ) -> Result<DeleteAgentResponse, String> {
-    let aid = AgentId::from_str(&agent_id).map_err(|e| e.to_string())?;
+    let aid = AgentId::from_str(&agent_id).map_err(std::string::ToString::to_string)?;
 
-    let vector_count = state.vector.count(&aid, false).await.map_err(|e| e.to_string())?;
+    let vector_count = state
+        .vector
+        .count(&aid, false)
+        .await
+        .map_err(|e| e.to_string())?;
     let had_memories = vector_count > 0;
 
-    state.persona_store.delete(&aid).await.map_err(|e| e.to_string())?;
+    state
+        .persona_store
+        .delete(&aid)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(DeleteAgentResponse {
         deleted: true,

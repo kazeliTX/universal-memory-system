@@ -3,14 +3,14 @@ use std::sync::Arc;
 
 use tauri::State;
 
+use umms_analyzer::epa::EpaAnalyzer;
+use umms_api::AppState;
 use umms_api::response::{
     ActivatedTagResponse, CoocEntry, CooccurrenceResponse, EpaAnalyzeResponse, TagListResponse,
     TagMatchResponse, TagResponse, TagSearchResponse,
 };
-use umms_api::AppState;
 use umms_core::tag::Tag;
 use umms_core::types::{AgentId, TagId};
-use umms_analyzer::epa::EpaAnalyzer;
 
 #[tauri::command]
 pub async fn list_tags(
@@ -22,8 +22,7 @@ pub async fn list_tags(
         .as_ref()
         .ok_or_else(|| "Tag system not enabled".to_owned())?;
 
-    let aid = AgentId::from_str(&agent_id)
-        .map_err(|e| format!("Invalid agent_id: {e}"))?;
+    let aid = AgentId::from_str(&agent_id).map_err(|e| format!("Invalid agent_id: {e}"))?;
 
     let tags = tag_store
         .all_tags(Some(&aid))
@@ -94,8 +93,7 @@ pub async fn tag_cooccurrences(
         .as_ref()
         .ok_or_else(|| "Tag system not enabled".to_owned())?;
 
-    let tid = TagId::from_str(&tag_id)
-        .map_err(|e| format!("Invalid tag_id: {e}"))?;
+    let tid = TagId::from_str(&tag_id).map_err(|e| format!("Invalid tag_id: {e}"))?;
 
     let coocs = tag_store
         .cooccurrences(&tid, 50)

@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use tauri::State;
 
+use umms_api::AppState;
 use umms_api::response::*;
 use umms_api::session::ChatSession;
-use umms_api::AppState;
 
 #[tauri::command]
 pub async fn list_sessions(

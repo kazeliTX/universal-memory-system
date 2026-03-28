@@ -3,10 +3,10 @@ use std::sync::Arc;
 
 use tauri::State;
 
+use umms_api::AppState;
 use umms_api::response::{
     EncoderStatusResponse, PipelineLatency, PipelineStats, SearchHit, SemanticSearchResponse,
 };
-use umms_api::AppState;
 use umms_core::traits::{Encoder, VectorStore};
 
 #[tauri::command]
@@ -18,7 +18,13 @@ pub async fn encoder_status(
             let (total_requests, total_texts_encoded, total_errors, total_retries, avg_latency_ms) =
                 if let Some(stats) = pool.embedding_stats() {
                     let s = stats.snapshot();
-                    (s.total_requests, s.total_texts_encoded, s.total_errors, s.total_retries, s.avg_latency_ms)
+                    (
+                        s.total_requests,
+                        s.total_texts_encoded,
+                        s.total_errors,
+                        s.total_retries,
+                        s.avg_latency_ms,
+                    )
                 } else {
                     (0, 0, 0, 0, 0.0)
                 };
@@ -56,10 +62,7 @@ pub async fn encode_text(
         .as_ref()
         .ok_or_else(|| "Encoder not available (GEMINI_API_KEY not set)".to_owned())?;
 
-    encoder
-        .encode_text(&text)
-        .await
-        .map_err(|e| format!("{e}"))
+    encoder.encode_text(&text).await.map_err(|e| format!("{e}"))
 }
 
 #[tauri::command]
@@ -70,10 +73,8 @@ pub async fn semantic_search(
     _top_k: Option<usize>,
     _include_shared: Option<bool>,
 ) -> Result<SemanticSearchResponse, String> {
-    let aid = umms_core::types::AgentId::from_str(
-        agent_id.as_deref().unwrap_or("coder"),
-    )
-    .map_err(|e| format!("Invalid agent_id: {e}"))?;
+    let aid = umms_core::types::AgentId::from_str(agent_id.as_deref().unwrap_or("coder"))
+        .map_err(|e| format!("Invalid agent_id: {e}"))?;
 
     // Use hybrid pipeline when available
     if let Some(ref retriever) = state.retriever {

@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use tauri::State;
 
-use umms_api::response::{ChunkDetailResponse, IngestLatencyResponse, IngestResponse};
 use umms_api::AppState;
+use umms_api::response::{ChunkDetailResponse, IngestLatencyResponse, IngestResponse};
 use umms_core::types::{AgentId, IsolationScope};
 use umms_retriever::ingest::chunker::ChunkerConfig;
 use umms_retriever::ingest::pipeline::IngestPipeline;

@@ -6,11 +6,11 @@ use chrono::Utc;
 use serde::Deserialize;
 use tauri::State;
 
+use umms_api::AppState;
 use umms_api::prompt::diary_generator::DiaryGenerator;
 use umms_api::prompt::engine::PromptEngine;
 use umms_api::response::*;
 use umms_api::session::{self, ChatMessage as SessionChatMessage, ChatSession, ChatSourceRecord};
-use umms_api::AppState;
 use umms_core::config::load_config;
 use umms_core::types::AgentId;
 use umms_observe::{AuditEventBuilder, AuditEventType};
@@ -21,6 +21,7 @@ pub struct ChatMessageArg {
     pub content: String,
 }
 
+#[allow(clippy::too_many_lines)]
 #[tauri::command]
 pub async fn chat(
     state: State<'_, Arc<AppState>>,
@@ -85,10 +86,10 @@ pub async fn chat(
         .await
         .map_err(|e| format!("Persona lookup failed: {e}"))?;
 
-    let system_prompt = persona
-        .as_ref()
-        .map(|p| p.system_prompt.clone())
-        .unwrap_or_else(|| format!("You are a helpful AI assistant named {}.", agent_id));
+    let system_prompt = persona.as_ref().map_or_else(
+        || format!("You are a helpful AI assistant named {agent_id}."),
+        |p| p.system_prompt.clone(),
+    );
 
     // Load diary entries
     let diary_entries = state
@@ -180,18 +181,21 @@ pub async fn chat(
     vars.insert("user_message".to_owned(), message.clone());
 
     // Runtime variables for the new prompt system
-    let agent_name_val = persona.as_ref().map(|p| p.name.clone()).unwrap_or_else(|| agent_id.clone());
+    let agent_name_val = persona
+        .as_ref()
+        .map_or_else(|| agent_id.clone(), |p| p.name.clone());
     let agent_role_val = persona.as_ref().map(|p| p.role.clone()).unwrap_or_default();
     vars.insert("AgentName".to_owned(), agent_name_val);
     vars.insert("AgentRole".to_owned(), agent_role_val);
-    vars.insert("DateTime".to_owned(), Utc::now().format("%Y-%m-%d %H:%M").to_string());
+    vars.insert(
+        "DateTime".to_owned(),
+        Utc::now().format("%Y-%m-%d %H:%M").to_string(),
+    );
     vars.insert("SessionTitle".to_owned(), current_session.title.clone());
 
     let full_prompt = match state.prompt_store.get_prompt_config(&agent_id).await {
-        Ok(Some(prompt_config)) => {
-            PromptEngine::build_prompt(&prompt_config, &vars)
-                .map_err(|e| format!("Prompt build failed: {e}"))?
-        }
+        Ok(Some(prompt_config)) => PromptEngine::build_prompt(&prompt_config, &vars)
+            .map_err(|e| format!("Prompt build failed: {e}"))?,
         _ => {
             // Fallback to legacy template engine
             state
@@ -258,16 +262,14 @@ pub async fn chat(
 
     // Audit
     state.audit.record(
-        AuditEventBuilder::new(AuditEventType::Encode, agent_id.clone()).details(
-            serde_json::json!({
-                "action": "chat",
-                "session_id": final_session_id,
-                "message_preview": &message[..message.len().min(100)],
-                "sources": sources.len(),
-                "diary_entries": diary_entries.len(),
-                "latency_ms": latency_ms,
-            }),
-        ),
+        AuditEventBuilder::new(AuditEventType::Encode, &aid).details(serde_json::json!({
+            "action": "chat",
+            "session_id": final_session_id,
+            "message_preview": &message[..message.len().min(100)],
+            "sources": sources.len(),
+            "diary_entries": diary_entries.len(),
+            "latency_ms": latency_ms,
+        })),
     );
 
     // Spawn background diary generation

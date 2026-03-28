@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tauri::State;
 
-use umms_api::response::*;
 use umms_api::AppState;
+use umms_api::response::*;
 use umms_core::types::*;
 
 #[tauri::command]
@@ -12,7 +12,7 @@ pub async fn list_graph_nodes(
     agent_id: String,
     limit: Option<usize>,
 ) -> Result<GraphNodesResponse, String> {
-    let aid = AgentId::from_str(&agent_id).map_err(|e| e.to_string())?;
+    let aid = AgentId::from_str(&agent_id).map_err(std::string::ToString::to_string)?;
 
     let mut nodes = state
         .graph
@@ -35,7 +35,7 @@ pub async fn get_node_detail(
     state: State<'_, Arc<AppState>>,
     node_id: String,
 ) -> Result<NodeDetailResponse, String> {
-    let nid = NodeId::from_str(&node_id).map_err(|e| e.to_string())?;
+    let nid = NodeId::from_str(&node_id).map_err(std::string::ToString::to_string)?;
 
     let node = state
         .graph
@@ -44,7 +44,11 @@ pub async fn get_node_detail(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("node {node_id} not found"))?;
 
-    let edges = state.graph.edges_of(&nid).await.map_err(|e| e.to_string())?;
+    let edges = state
+        .graph
+        .edges_of(&nid)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(NodeDetailResponse { node, edges })
 }
@@ -56,13 +60,13 @@ pub async fn traverse_graph(
     hops: Option<usize>,
     agent_id: Option<String>,
 ) -> Result<TraverseResponse, String> {
-    let nid = NodeId::from_str(&node_id).map_err(|e| e.to_string())?;
+    let nid = NodeId::from_str(&node_id).map_err(std::string::ToString::to_string)?;
 
     let aid = agent_id
         .as_deref()
         .map(AgentId::from_str)
         .transpose()
-        .map_err(|e| e.to_string())?;
+        .map_err(std::string::ToString::to_string)?;
 
     let (nodes, edges) = state
         .graph
@@ -84,7 +88,7 @@ pub async fn search_graph(
         .as_deref()
         .map(AgentId::from_str)
         .transpose()
-        .map_err(|e| e.to_string())?;
+        .map_err(std::string::ToString::to_string)?;
 
     let nodes = state
         .graph

@@ -140,6 +140,15 @@ async function handleSearch() {
   }
 }
 
+// Debounced search-as-you-type: triggers after 500ms of no typing if query >= 2 chars
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+watch(searchQuery, (val) => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  if (val.length >= 2) {
+    debounceTimer = setTimeout(() => handleSearch(), 500)
+  }
+})
+
 watch([selectedAgent, selectedLayer], refresh, { immediate: true })
 </script>
 

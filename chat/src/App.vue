@@ -4,7 +4,10 @@ import { NConfigProvider, darkTheme } from 'naive-ui'
 import { listAgents } from './api'
 import AgentSelector from './components/AgentSelector.vue'
 import ChatWindow from './components/ChatWindow.vue'
+import { useEvents } from './composables/useEvents'
 import type { AgentInfo, ChatSession } from './types'
+
+const { events, connected } = useEvents()
 
 const selectedAgent = ref('coder')
 const sessions = ref<ChatSession[]>([])
@@ -52,7 +55,7 @@ function saveSessions() {
 }
 
 function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+  return crypto.randomUUID()
 }
 
 function createNewSession() {
@@ -162,6 +165,12 @@ onMounted(async () => {
         />
       </aside>
 
+      <!-- WebSocket connection indicator -->
+      <div class="ws-indicator" :title="connected ? 'WebSocket 已连接' : 'WebSocket 未连接'">
+        <span class="ws-dot" :class="{ connected }"></span>
+        <span v-if="events.length > 0" class="ws-badge">{{ events.length }}</span>
+      </div>
+
       <!-- Main chat area -->
       <main class="main-area">
         <ChatWindow
@@ -243,6 +252,40 @@ onMounted(async () => {
   font-size: 12px;
   align-items: center;
   justify-content: center;
+}
+
+.ws-indicator {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #555;
+  transition: background 0.3s ease;
+}
+
+.ws-dot.connected {
+  background: #00ff88;
+  box-shadow: 0 0 6px rgba(0, 255, 136, 0.5);
+}
+
+.ws-badge {
+  font-size: 10px;
+  color: #00d4ff;
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  border-radius: 10px;
+  padding: 0 6px;
+  line-height: 16px;
 }
 
 @media (max-width: 768px) {

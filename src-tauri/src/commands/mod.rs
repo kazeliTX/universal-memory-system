@@ -11,19 +11,19 @@
 //! If you find yourself writing more than ~10 lines in a command, the logic
 //! belongs in `umms-api` or `umms-storage`.
 
-pub mod memory;
-pub mod graph;
 pub mod agent;
+pub mod audit;
 pub mod chat;
 pub mod consolidation;
-pub mod audit;
 pub mod diary;
 pub mod encoder;
-pub mod ingest;
-pub mod persona;
-pub mod system;
 pub mod files;
-pub mod sessions;
+pub mod graph;
+pub mod ingest;
+pub mod memory;
+pub mod persona;
 pub mod prompts;
+pub mod sessions;
+pub mod system;
 pub mod tags;
 pub mod traces;

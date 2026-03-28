@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tauri::State;
 
-use umms_api::response::AuditResponse;
 use umms_api::AppState;
+use umms_api::response::AuditResponse;
 use umms_observe::AuditFilter;
 
 #[tauri::command]
@@ -19,7 +19,7 @@ pub async fn query_audit_events(
         .offset(offset.unwrap_or(0));
 
     if let Some(ref aid) = agent_id {
-        filter = filter.agent(aid.as_str());
+        filter = filter.agent_label(aid.as_str());
     }
 
     // Reuse the same parsing logic as the HTTP handler

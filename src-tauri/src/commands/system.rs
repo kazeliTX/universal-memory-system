@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tauri::State;
 
-use umms_api::response::*;
 use umms_api::AppState;
+use umms_api::response::*;
 use umms_core::traits::{MemoryCache, VectorStore};
 use umms_core::types::*;
 
@@ -62,7 +62,7 @@ pub async fn get_stats(state: State<'_, Arc<AppState>>) -> Result<StatsResponse,
             total_entries: vector_total,
         },
         graph: GraphStatsDto::from(gs),
-        agents: known.iter().map(|s| s.to_string()).collect(),
+        agents: known.iter().map(std::string::ToString::to_string).collect(),
     })
 }
 
