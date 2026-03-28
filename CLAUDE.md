@@ -91,23 +91,18 @@ UMMS/
 └── docs/                         # 编码标准、ADR、架构反思
 ```
 
-## 工程原则（详见 docs/CODING_STANDARDS.md）
+## 工程原则
 
-**原则零：第一性原理** — 写代码前先问：需求的本质是什么？最简单的正确解法是什么？如果我错了代价多大？
+完整原则见 `docs/CODING_STANDARDS.md`。核心摘要：
 
-**原则一：一次做对** — 不写"先让它跑起来"的代码。写之前先画状态图，接口先于实现，假设你没有第二次修改机会。
-
-**原则二：每个模块只知道它该知道的** — 接口即契约，实现即秘密。检验方法：把 LanceDB 换成 Qdrant，除 umms-storage 外应零修改。三个相似的东西才是抽象的时机（Rule of Three）。
-
-**原则三：让错误的代码无法编译** — Newtype 防止参数混淆（AgentId ≠ SessionId ≠ String），Typestate 强制状态机转换顺序，`#[must_use]` 防止忽略重要返回值。
-
-**原则四：显式优于隐式** — agent_id 是构造参数不是可选字段，副作用体现在函数名中，配置项有类型约束和边界检查。
-
-**原则五：错误处理是第一公民** — 错误类型携带诊断上下文，区分可恢复和不可恢复，永远不吞掉错误。
-
-**原则六：测试行为不测实现** — 测 "Agent B 不能看到 Agent A 的数据" 而不是 "调用了某个 mock 函数 1 次"。每个 bug fix 附带回归测试。
-
-**原则七：代码写给三个月后的自己** — 注释解释 WHY 不解释 WHAT，用领域语言命名（`apply_forgetting_decay` 不是 `process_items`），ADR 记录放弃了什么。
+1. **第一性原理** — 先问本质，再写代码
+2. **一次做对** — 接口先于实现，画状态图再编码
+3. **模块隔离** — 换 LanceDB→Qdrant 只改 umms-storage；Rule of Three 才抽象
+4. **类型安全** — Newtype ID 防混淆，Typestate 防状态越迁
+5. **显式优于隐式** — agent_id 是必填构造参数，非可选字段
+6. **错误是第一公民** — 携带诊断上下文，区分可恢复/不可恢复
+7. **测行为不测实现** — 测 "B 看不到 A 的数据"，每个 bugfix 附带回归测试
+8. **代码写给三个月后的自己** — 注释解释 WHY，用领域语言命名
 
 ## 性能目标
 
@@ -143,14 +138,26 @@ ruff check umms_ml/                  # Python lint
 cargo build --release                # Release 构建
 ```
 
-## 计划文档位置
+## 文档索引
 
-总体计划和各模块详细计划位于 `F:\Research\大模型记忆\`:
+### 项目内文档 (`docs/`)
+
+| 文档 | 类型 | 说明 |
+|------|------|------|
+| `CODING_STANDARDS.md` | 工程规范 | 八大原则 + 检验清单（必读） |
+| `AUDIT_2026-03-28.md` | 审计报告 | 全量代码审计，3 P0 + 5 P1 + 12 P2 问题 |
+| `OPT-001-vcp-prompt-system-migration.md` | 优化计划 | VCP Prompt 系统移植分析，7 项待移植能力 |
+| `OPT-002-epa-algorithm-evolution.md` | 优化计划 | EPA 算法演进 6 个 Sprint (E1-E6) |
+| `ADR-003-cozodb-graph-storage.md` | 架构决策 | CozoDB 替代 SQLite+petgraph |
+| `ADR-014-frontend-backend-separation.md` | 架构决策 | 三进程架构 |
+| `ADR-015-vcp-lessons-learned.md` | 架构决策 | VCP 项目 6 个借鉴点 |
+| `ADR-016-tagmem-wave-algorithm-reference.md` | 架构决策 | Tagmem 浪潮算法借鉴分析 |
+| `architecture/LGSRR_EPA架构反思.md` | 架构反思 | LGSRR 与 EPA 职责打通 |
+
+### 外部计划文档 (`F:\Research\大模型记忆\`)
+
 - `UMMS_project_master_plan.md` — 总体项目计划 (v2.1.0)
 - `UMMS_M1_storage_engine.md` ~ `UMMS_M7_persona_engine.md` — 各模块详细计划
-- `technical_architecture_universal_memory_system.md` — 企业版技术架构 (参考)
-- `llm_memory_engineering_implementation.md` — 认知科学理论基础
-- `research_report_universal_memory_system.md` — 研究报告
 
 ## 开发顺序
 
@@ -159,8 +166,8 @@ Phase 1 (W1-4):   M1 存储引擎 + M6 可观测性基础       ✅ 完成 (55 t
 Phase 1.5 (W3-5): M7 Persona 引擎                     ✅ 完成 (VCP 三模式 Prompt)
 Phase 2 (W5-8):   M2 编码服务 + umms-model             ✅ 完成 (ModelPool + 多模态编码)
 Phase 3 (W9-14):  M3 检索与分析                        ✅ 完成 (EPA + LGSRR + LIF 扩散)
-Phase 4 (W15-18): M4 巩固与自进化                      🔧 进行中 (WKD 蒸馏 + 遗忘衰减)
-Phase 5 (W19-24): M5 接入与交互层                      🔧 进行中 (Chat + Session 管理)
+Phase 4 (W15-18): M4 巩固与自进化                      🔧 进行中 (WKD 蒸馏 + 遗忘衰减 + 图谱演化)
+Phase 5 (W19-24): M5 接入与交互层                      🔧 进行中 (Chat + Session + Prompt 编辑器 + 统一 API 错误处理)
 Phase 6 (W25-28): M6 完善 + 集成测试 + 发布            ⏳ 待开始
 ```
 
@@ -200,10 +207,13 @@ cd chat && npm run dev
 
 ## 写代码前的自检
 
-- 如果删掉所有注释，新人仅通过类型签名和函数名能理解它在做什么吗？
-- 如果底层存储换了，存储层之外的代码需要改吗？（不应该）
-- 有没有接受 String 参数而它其实应该是更具体的类型？
-- 输入极端值（空串、空数组、MAX）会发生什么？
-- 有没有隐式顺序依赖？能用类型系统强制吗？
-- 三个月后看到这段代码，30 秒内能理解它为什么存在吗？
+详细清单见 `docs/CODING_STANDARDS.md` 末尾。最关键的两条：
+- 换存储后端，存储层之外的代码需要改吗？（不应该）
 - **这个模块的状态能在 dashboard 上看到吗？**
+
+## 已知问题（2026-03-28 审计）
+
+详见 `docs/AUDIT_2026-03-28.md`。关键待修复项：
+- **P0-1**: 3 个 API 端点 agent_id 默认 "coder"，绕过隔离（违反不变量 #1）
+- **P0-2/P0-3**: 巩固 API 和图谱查询返回 500
+- **P1-4**: Handler 错误类型为 String，需统一 ApiError 枚举
